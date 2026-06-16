@@ -3442,6 +3442,9 @@
                 <a href="#" class="nav-link-custom" onclick="openFloatingChat('batch', loggedInStudentData.batch)">
                     <i class="bi bi-people"></i> Chat with Batch
                 </a>
+                <a href="#" class="nav-link-custom" onclick="showStudentSection('myBatch', this)">
+                    <i class="bi bi-people-fill"></i> My Batch
+                </a>
                 <a href="#" class="nav-link-custom" onclick="openFloatingChat('admin', 'Admin')">
                     <i class="bi bi-shield-check"></i> Admin Chat
                 </a>
@@ -3814,6 +3817,53 @@
                                         <div class="text-center">
                                             <div class="loading-spinner"></div>
                                             <p class="text-muted mt-2">Loading tasks...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- My Batch Section -->
+                <div id="myBatchSection" class="content-section d-none">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="custom-card shadow-lg border-0 mb-4" style="border-radius: 20px; overflow: hidden;">
+                                <div class="card-header bg-gradient-primary text-white p-4 border-0" style="background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%); border: none;">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <h4 class="mb-0 fw-bold text-white"><i class="bi bi-people-fill me-2"></i>My Batch Team</h4>
+                                            <p class="mb-0 small opacity-75">Connect with your internship batch team members</p>
+                                        </div>
+                                        <i class="bi bi-person-hearts fs-1 opacity-25"></i>
+                                    </div>
+                                </div>
+                                <div class="card-body p-4 bg-light">
+                                    <div id="myBatchLoading" class="text-center py-5">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="text-muted mt-2">Retrieving batch members...</p>
+                                    </div>
+                                    <div id="myBatchError" class="alert alert-danger d-none border-0 rounded-4 shadow-sm mb-4">
+                                        <i class="bi bi-exclamation-triangle-fill me-2"></i> <span id="myBatchErrorMessage"></span>
+                                    </div>
+                                    <div id="myBatchContent" class="d-none">
+                                        <div class="row mb-4">
+                                            <div class="col-md-6">
+                                                <div class="p-3 bg-white rounded-4 shadow-sm" style="border-radius: 12px; border-left: 4px solid #4f46e5;">
+                                                    <h6 class="fw-bold mb-1"><i class="bi bi-info-circle text-primary me-2"></i>Batch Details</h6>
+                                                    <div class="small text-muted mt-2">
+                                                        <div><strong>Batch Name:</strong> <span id="myBatchNameHeader"></span></div>
+                                                        <div><strong>Industrial Supervisor:</strong> <span id="myBatchSupervisorHeader"></span></div>
+                                                        <div><strong>Project Focus:</strong> <span id="myBatchProjectHeader"></span></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4" id="myBatchGrid">
+                                            <!-- Batch member cards will be rendered here dynamically -->
                                         </div>
                                     </div>
                                 </div>
@@ -4307,7 +4357,7 @@
                                 </h6>
                                 <ul class="small text-muted ps-3 mb-4">
                                     <li>WFH requests can only be made for <strong>future dates</strong>.</li>
-                                    <li>WFH is subject to mentor / admin approval.</li>
+                                    <li>WFH is subject to Industrial Supervisor / admin approval.</li>
                                     <li>After approval, complete OTP verification on the WFH date.</li>
                                     <li>If OTP is missed, request an attendance correction.</li>
                                 </ul>
@@ -6242,6 +6292,39 @@
             console.log("DEBUG: Step 2 - Details & Lists");
             loggedInStudentData = studentData.details || {};
 
+            const statusVal = String(loggedInStudentData.status || loggedInStudentData.ApplicationStatus || '').toLowerCase().trim();
+            if (statusVal === 'inactive') {
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
+
+                document.body.innerHTML = `
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; width:100vw; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#f8fafc; font-family:'Inter', sans-serif; text-align:center; padding:20px; box-sizing:border-box; position:fixed; top:0; left:0; z-index:999999;">
+                        <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.08); border-radius:24px; padding:40px; max-width:550px; width:100%; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.5); backdrop-filter:blur(10px); display:flex; flex-direction:column; align-items:center; gap:20px;">
+                            <div style="width:80px; height:80px; background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#ef4444; font-size:2.5rem; margin-bottom:10px; animation: pulse 2s infinite;">
+                                <i class="fas fa-user-slash"></i>
+                            </div>
+                            <h2 style="font-weight:800; font-size:1.8rem; margin:0; letter-spacing:-0.5px; background:linear-gradient(to right, #f8fafc, #cbd5e1); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Portal Access Suspended</h2>
+                            <span style="background:rgba(239, 68, 68, 0.15); color:#fca5a5; font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:9999px; letter-spacing:0.5px; text-transform:uppercase;">Status: Inactive</span>
+                            <p style="color:#94a3b8; font-size:0.95rem; line-height:1.6; margin:0;">
+                                Your student portal access has been deactivated. The internship period has concluded, and you have not met the minimum completion criteria (mandatory document uploads or 50%+ attendance).
+                            </p>
+                            <div style="height:1px; background:rgba(255, 255, 255, 0.08); width:100%; margin:10px 0;"></div>
+                            <p style="color:#64748b; font-size:0.8rem; line-height:1.5; margin:0;">
+                                If you believe this is an error or would like to submit documents, please contact the <strong>Industrial Supervisor</strong> or administration office immediately.
+                            </p>
+                        </div>
+                    </div>
+                    <style>
+                        @keyframes pulse {
+                            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+                            70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+                            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+                        }
+                    </style>
+                `;
+                return;
+            }
+
             // Ensure lists are initialized
             studentData.tasks = studentData.tasks || [];
             studentData.projects = studentData.projects || [];
@@ -6873,6 +6956,8 @@
             // Trigger data loads
             if (sectionId === 'notices') {
                 if (typeof loadStudentNotices === 'function') loadStudentNotices();
+            } else if (sectionId === 'myBatch') {
+                if (typeof loadMyBatchMembers === 'function') loadMyBatchMembers();
             } else if (sectionId === 'batchChat') {
                 if (typeof loadBatchChat === 'function') loadBatchChat();
             } else if (sectionId === 'diary') {
@@ -10141,6 +10226,105 @@
             window.open(whatsappUrl, '_blank');
         }
 
+        function loadMyBatchMembers() {
+            const loading = document.getElementById('myBatchLoading');
+            const error = document.getElementById('myBatchError');
+            const content = document.getElementById('myBatchContent');
+            const grid = document.getElementById('myBatchGrid');
+            const errorMsg = document.getElementById('myBatchErrorMessage');
+
+            if (!loading || !error || !content || !grid) return;
+
+            loading.classList.remove('d-none');
+            error.classList.add('d-none');
+            content.classList.add('d-none');
+
+            const regId = loggedInStudentData ? (loggedInStudentData.registrationId || loggedInStudentData.RegistrationID) : null;
+            if (!regId) {
+                loading.classList.add('d-none');
+                error.classList.remove('d-none');
+                errorMsg.textContent = "Unable to retrieve registration ID. Please re-login.";
+                return;
+            }
+
+            google.script.run
+                .withSuccessHandler(res => {
+                    loading.classList.add('d-none');
+                    if (res.status === 'error') {
+                        error.classList.remove('d-none');
+                        errorMsg.textContent = res.message;
+                        return;
+                    }
+
+                    if (!res.members || res.members.length === 0) {
+                        error.classList.remove('d-none');
+                        errorMsg.textContent = "No batch members found or you are not currently assigned to a batch.";
+                        return;
+                    }
+
+                    // Populate Headers
+                    document.getElementById('myBatchNameHeader').textContent = res.batchName || 'N/A';
+                    document.getElementById('myBatchSupervisorHeader').textContent = res.supervisor || 'N/A';
+                    document.getElementById('myBatchProjectHeader').textContent = res.project || 'N/A';
+
+                    // Populate Grid
+                    grid.innerHTML = '';
+                    res.members.forEach(member => {
+                        const isSelf = String(member.registrationId).trim().toUpperCase() === String(regId).trim().toUpperCase();
+                        
+                        const colDiv = document.createElement('div');
+                        colDiv.className = 'col';
+                        
+                        // Premium card HTML
+                        colDiv.innerHTML = `
+                            <div class="card h-100 border-0 shadow-sm rounded-4 position-relative overflow-hidden" 
+                                 style="${isSelf ? 'border: 2px solid #4f46e5 !important; box-shadow: 0 8px 30px rgba(79, 70, 229, 0.15) !important;' : 'border: 1px solid #e5e7eb !important;'}">
+                                ${isSelf ? `
+                                <div class="position-absolute top-0 end-0 bg-primary text-white px-3 py-1 fw-bold small rounded-bl-4" 
+                                     style="border-bottom-left-radius: 12px; font-size: 11px; z-index: 2;">
+                                    <i class="bi bi-star-fill text-warning me-1"></i> You
+                                </div>` : ''}
+                                <div class="card-body p-4">
+                                    <div class="d-flex align-items-center mb-3">
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center text-white" 
+                                             style="width: 48px; height: 48px; background: ${isSelf ? 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)' : '#6b7280'}; font-size: 20px; font-weight: bold;">
+                                            ${(member.name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div class="ms-3">
+                                            <h6 class="fw-bold mb-0 text-dark">${member.name || 'Unknown'}</h6>
+                                            <span class="text-muted small">${member.registrationId || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-muted mb-3">
+                                        <div class="mb-1"><i class="bi bi-building text-primary me-2"></i><strong>College:</strong> ${member.college || 'N/A'}</div>
+                                        <div class="mb-1"><i class="bi bi-mortarboard text-primary me-2"></i><strong>Dept:</strong> ${member.department || 'N/A'}</div>
+                                        <div class="mb-1"><i class="bi bi-calendar-range text-primary me-2"></i><strong>Period:</strong> ${member.startDate || 'N/A'} to ${member.endDate || 'N/A'}</div>
+                                    </div>
+                                    <div class="border-top pt-3 mt-3 d-flex justify-content-between align-items-center">
+                                        <div class="small text-muted">
+                                            <i class="bi bi-telephone me-1"></i> ${member.phone || 'N/A'}
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            ${member.email ? `<a href="mailto:${member.email}" class="btn btn-sm btn-outline-primary rounded-circle" title="Email Member"><i class="bi bi-envelope"></i></a>` : ''}
+                                            ${member.phone ? `<a href="https://wa.me/91${member.phone.replace(/[^0-9]/g, '')}" target="_blank" class="btn btn-sm btn-outline-success rounded-circle" title="WhatsApp Member"><i class="bi bi-whatsapp"></i></a>` : ''}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        grid.appendChild(colDiv);
+                    });
+
+                    content.classList.remove('d-none');
+                })
+                .withFailureHandler(err => {
+                    loading.classList.add('d-none');
+                    error.classList.remove('d-none');
+                    errorMsg.textContent = "Failed to fetch batch members: " + err.toString();
+                })
+                .getMyBatchMembers(regId);
+        }
+
         function loadProfileData() {
             const container = document.getElementById('detailedProfileContainer');
             if (!container) return;
@@ -11087,23 +11271,51 @@
                 refreshNotifications();
             }).markNotificationRead(notifId, regId);
 
-            // If it's a chat notification, open the respective chat
-            if (type === 'chat') {
+            // Redirect logic based on type and content
+            let targetSection = null;
+            const titleText = (notif ? (notif.title || '') : '').toLowerCase();
+            const msgText = (notif ? (notif.message || '') : '').toLowerCase();
+            const combinedText = titleText + ' ' + msgText;
+            const lowerType = String(type || '').toLowerCase();
+
+            if (lowerType === 'chat') {
                 if (batchId && batchId !== 'undefined' && batchId !== 'null') {
                     openFloatingChat('batch', batchId);
                 } else {
                     openFloatingChat('admin', 'Admin');
                 }
-            } else if (notif) {
-                // If it is a standard notification, show its details in a modal
-                showSuccessModal(`
-                    <div style="text-align:left;">
-                        <h5 class="fw-bold text-primary">${notif.title || 'Notification'}</h5>
-                        <p class="text-muted small">Received: ${formatTime(notif.time)}</p>
-                        <hr>
-                        <div style="white-space: pre-wrap; font-size: 0.95rem;">${notif.message}</div>
-                    </div>
-                `);
+            } else {
+                if (lowerType.includes('task') || /task/i.test(combinedText)) {
+                    targetSection = 'tasks';
+                } else if (lowerType.includes('project') || /project/i.test(combinedText)) {
+                    targetSection = 'projects';
+                } else if (lowerType.includes('diary') || /diary/i.test(combinedText)) {
+                    targetSection = 'diary';
+                } else if (lowerType.includes('attendance') || /attendance/i.test(combinedText)) {
+                    targetSection = 'attendance';
+                } else if (lowerType.includes('request') || /leave|od|request/i.test(combinedText)) {
+                    targetSection = 'requests';
+                } else if (lowerType.includes('certificate') || lowerType.includes('document') || /certificate|generated|file|document/i.test(combinedText)) {
+                    targetSection = /certificate/i.test(combinedText) ? 'certificates' : 'fileManager';
+                }
+
+                if (targetSection) {
+                    const link = document.querySelector(`.nav-link-custom[onclick*="'${targetSection}'"]`) || 
+                                 document.querySelector(`.nav-link-custom[onclick*="${targetSection}"]`);
+                    showStudentSection(targetSection, link);
+                }
+
+                if (notif) {
+                    // Show details in modal
+                    showSuccessModal(`
+                        <div style="text-align:left;">
+                            <h5 class="fw-bold text-primary">${notif.title || 'Notification'}</h5>
+                            <p class="text-muted small">Received: ${formatTime(notif.time)}</p>
+                            <hr>
+                            <div style="white-space: pre-wrap; font-size: 0.95rem;">${notif.message}</div>
+                        </div>
+                    `);
+                }
             }
         }
 

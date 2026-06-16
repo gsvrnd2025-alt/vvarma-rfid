@@ -1924,31 +1924,86 @@ function updateExpiredApprovedStudentsStatus() {
     const data = sheet.getDataRange().getValues();
     if (data.length <= 1) return;
     const headers = data[0];
+    
+    const regIdCol = headers.indexOf("RegistrationID");
     const appStatusCol = headers.indexOf("ApplicationStatus");
     const statusCol = headers.indexOf("Status");
     const endDateCol = headers.indexOf("InternshipEndDate");
+    const startDateCol = headers.indexOf("InternshipStartDate");
+    const durationDaysCol = headers.indexOf("DurationDays");
+    const attAccessCol = headers.indexOf("AttendanceAccess");
     
-    if (endDateCol === -1) return;
+    const bonafideCol = headers.indexOf("BonafideUrl");
+    const declarationCol = headers.indexOf("DeclarationUrl");
+    const collegeIdCol = headers.indexOf("CollegeIdUrl");
+    
+    if (endDateCol === -1 || regIdCol === -1) return;
+
+    // Build attendance count map
+    const attendanceSheet = getSheet(SHEET_NAMES.ATTENDANCE);
+    const allAttendance = attendanceSheet ? (getSheetDataAsObjects(attendanceSheet) || []) : [];
+    const attendanceCountMap = {};
+    allAttendance.forEach(a => {
+      const rid = String(a.StudentRegistrationID || "").trim().toUpperCase();
+      if (!rid) return;
+      attendanceCountMap[rid] = (attendanceCountMap[rid] || 0) + 1;
+    });
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
     let updated = false;
     for (let i = 1; i < data.length; i++) {
+      const regId = String(data[i][regIdCol] || '').trim();
+      if (!regId) continue;
+      const regIdUpper = regId.toUpperCase();
       const appStatus = appStatusCol !== -1 ? String(data[i][appStatusCol] || '').trim().toLowerCase() : '';
       const status = statusCol !== -1 ? String(data[i][statusCol] || '').trim().toLowerCase() : '';
       const endDateVal = data[i][endDateCol];
       
-      if (endDateVal && (appStatus === 'approved' || status === 'approved')) {
+      const isApprovedOrActive = (appStatus === 'approved' || appStatus === 'assigned' || appStatus === 'active' ||
+                                  status === 'approved' || status === 'assigned' || status === 'active');
+                                  
+      if (endDateVal && isApprovedOrActive) {
         const endDate = parseLocalDate_(endDateVal);
         if (endDate && endDate < today) {
-          if (appStatusCol !== -1) {
-            sheet.getRange(i + 1, appStatusCol + 1).setValue("Approved with hold");
+          // Verify if they met the minimum requirements:
+          const bonafide = bonafideCol !== -1 ? String(data[i][bonafideCol] || '').trim() : '';
+          const declaration = declarationCol !== -1 ? String(data[i][declarationCol] || '').trim() : '';
+          const collegeId = collegeIdCol !== -1 ? String(data[i][collegeIdCol] || '').trim() : '';
+          const hasMandatoryDocs = !!(bonafide && declaration && collegeId);
+
+          let durationDays = 0;
+          const startDateVal = startDateCol !== -1 ? data[i][startDateCol] : null;
+          if (startDateVal && endDateVal) {
+            const sd = parseLocalDate_(startDateVal);
+            const ed = parseLocalDate_(endDateVal);
+            if (sd && ed) {
+              sd.setHours(0,0,0,0);
+              ed.setHours(0,0,0,0);
+              durationDays = Math.round((ed.getTime() - sd.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            }
           }
-          if (statusCol !== -1) {
-            sheet.getRange(i + 1, statusCol + 1).setValue("Approved with hold");
+          if (durationDays <= 0 && durationDaysCol !== -1) {
+            durationDays = parseInt(data[i][durationDaysCol]) || 0;
           }
-          updated = true;
+          
+          const attendanceCount = attendanceCountMap[regIdUpper] || 0;
+          const hasMinAttendance = durationDays > 0 ? (attendanceCount >= (durationDays * 0.5)) : true;
+
+          // If they did NOT upload mandatory documents OR if they did NOT meet 50% attendance, deactivate them.
+          if (!hasMandatoryDocs || !hasMinAttendance) {
+            if (appStatusCol !== -1) {
+              sheet.getRange(i + 1, appStatusCol + 1).setValue("Inactive");
+            }
+            if (statusCol !== -1) {
+              sheet.getRange(i + 1, statusCol + 1).setValue("Inactive");
+            }
+            if (attAccessCol !== -1) {
+              sheet.getRange(i + 1, attAccessCol + 1).setValue("FALSE");
+            }
+            updated = true;
+          }
         }
       }
     }
@@ -6926,6 +6981,7 @@ function getStudentDataForDoc(registrationId) {
   // Try fetching Project Title if BATCH is set
   let projectTitle = 'N/A';
   let skillLearned = 'N/A';
+  let supervisorName = 'N/A';
   if (student.Batch) {
     try {
       const batchSheet = getSheet(SHEET_NAMES.BATCHES);
@@ -6941,6 +6997,7 @@ function getStudentDataForDoc(registrationId) {
           projectTitle = bObj.Project || bObj['ProjectTitle'] || 'N/A';
           // Check various header possibilities for Skill Learned
           skillLearned = bObj.SkillLearned || bObj['Skill Learned'] || bObj['skillLearned'] || bObj['Skill Learned (For Certificate)'] || 'N/A';
+          supervisorName = bObj.Mentor || bObj.Supervisor || bObj['Industrial Supervisor'] || 'N/A';
         }
       }
 
@@ -6987,6 +7044,9 @@ function getStudentDataForDoc(registrationId) {
     Batch: student.Batch || 'N/A',
     SkillLearned: skillLearned,
     ProjectTitle: projectTitle,
+    Mentor: supervisorName,
+    IndustrialSupervisor: supervisorName,
+    'Industrial Supervisor': supervisorName,
     CompanyName: COMPANY_NAME,
     CompanyContact: COMPANY_CONTACT,
     CompanyWebsite: COMPANY_WEBSITE,
@@ -10797,17 +10857,17 @@ function createBatch(batchName, mentorName, projectName, description, workArea, 
 
     sheet.appendRow(row);
 
-    // Send email to mentor
+    // Send email to supervisor
     if (mentorName) {
-      const mentorEmail = getAdminEmailByName_(mentorName);
-      if (mentorEmail) {
+      const supervisorEmail = getAdminEmailByName_(mentorName);
+      if (supervisorEmail) {
         try {
           const subject = `New Batch Assigned: ${batchName}`;
           const title = "New Batch Created";
           const gradient = "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)"; // Emerald gradient
           const content = `
             <p style="font-size: 16px; margin-top: 0;">Dear <strong>${mentorName}</strong>,</p>
-            <p>You have been assigned as the mentor for the newly created batch:</p>
+            <p>You have been assigned as the Industrial Supervisor for the newly created batch:</p>
             
             <div style="background-color: #f0fdf4; border-left: 4px solid #11998e; padding: 15px; margin: 20px 0; border-radius: 4px;">
               <h3 style="margin: 0 0 10px 0; color: #11998e; font-size: 18px;">${batchName}</h3>
@@ -10826,9 +10886,9 @@ function createBatch(batchName, mentorName, projectName, description, workArea, 
               <a href="${getPublishedUrl()}" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: #ffffff; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; box-shadow: 0 4px 10px rgba(17, 153, 142, 0.3);">Access Admin Dashboard</a>
             </div>
           `;
-          sendModernHtmlEmail_(mentorEmail, subject, title, gradient, content);
+          sendModernHtmlEmail_(supervisorEmail, subject, title, gradient, content);
         } catch (e) {
-          Logger.log('Error sending email to mentor: ' + e.toString());
+          Logger.log('Error sending email to supervisor: ' + e.toString());
         }
       }
     }
@@ -12032,7 +12092,7 @@ function generateConsolidatedAttendancePDF(options = {}) {
             </tr>
             <tr>
               <td style="border:none; padding: 2px;"><strong>College:</strong> ${studentInfo.college}</td>
-              <td style="border:none; padding: 2px;"><strong>Mentor:</strong> ${studentInfo.mentor}</td>
+              <td style="border:none; padding: 2px;"><strong>Industrial Supervisor:</strong> ${studentInfo.mentor}</td>
             </tr>
             <tr>
               <td style="border:none; padding: 2px;" colspan="2"><strong>Project:</strong> ${studentInfo.project}</td>
@@ -12051,7 +12111,7 @@ function generateConsolidatedAttendancePDF(options = {}) {
               <td style="border:none; padding: 2px;"><strong>Students:</strong> ${batchInfo.studentCount}</td>
             </tr>
             <tr>
-              <td style="border:none; padding: 2px;"><strong>Mentor / Supervisor:</strong> ${batchInfo.mentor}</td>
+              <td style="border:none; padding: 2px;"><strong>Industrial Supervisor:</strong> ${batchInfo.mentor}</td>
               <td style="border:none; padding: 2px;"><strong>Period:</strong> ${options.startDate ? (formatDateDisplay(options.startDate) + ' to ' + formatDateDisplay(options.endDate)) : 'All Time'}</td>
             </tr>
           </table>
@@ -14030,6 +14090,7 @@ function getAllStudents() {
         rfidTag: s.RFID_TagID || '',
         projectName: projectNames[regIdUpper] || '',
         hasDocuments: studentsWithFiles.has(regIdUpper),
+        allMandatoryDone: !!((s.BonafideUrl || '').trim() && (s.DeclarationUrl || '').trim() && (s.CollegeIdUrl || '').trim()),
         projectDocCount: projectDocCounts[regIdUpper] || 0,
         attendanceAccess: (s.AttendanceAccess !== false && s.AttendanceAccess !== 'FALSE' && String(s.AttendanceAccess).trim().toUpperCase() !== 'FALSE'),
         diaryAccess: (s.DiaryAccess !== false && s.DiaryAccess !== 'FALSE' && String(s.DiaryAccess).trim().toUpperCase() !== 'FALSE'),
@@ -16157,7 +16218,7 @@ function generateStudentDiaryPDF_V2(options) {
             <td style="border: 1px solid #333; padding: 6px;" colspan="2">Name of finished Product: <strong>${projectName}</strong></td>
           </tr>
           <tr>
-            <td style="border: 1px solid #333; padding: 6px;" colspan="3">Name of HOD/Supervisor: <strong>${mentorName}</strong></td>
+            <td style="border: 1px solid #333; padding: 6px;" colspan="3">Name of HOD/Industrial Supervisor: <strong>${mentorName}</strong></td>
           </tr>
           <tr>
             <td style="border: 1px solid #333; padding: 6px;" colspan="3">Attendance Status: <strong style="color: ${isPresent ? '#2e7d32' : '#d32f2f'};">${attStatus || 'No Record'}</strong></td>
@@ -22643,6 +22704,75 @@ function doPost(e) {
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+
+/**
+ * Fetches all members of the batch assigned to the given student.
+ */
+function getMyBatchMembers(regId) {
+  try {
+    const studentRes = getStudentFullData(regId);
+    if (studentRes.status === 'error') {
+      return studentRes;
+    }
+    const student = studentRes.studentData;
+    const batchName = student.Batch || '';
+    if (!batchName) {
+      return { status: 'error', message: 'No batch assigned to this student.' };
+    }
+
+    // Look up the batch details
+    const batchSheet = getSheet(SHEET_NAMES.BATCHES);
+    let supervisor = 'N/A';
+    let project = 'N/A';
+    if (batchSheet) {
+      const batches = getSheetDataAsObjects(batchSheet);
+      const batchObj = batches.find(b => String(b.BatchName || '').trim().toLowerCase() === String(batchName).trim().toLowerCase());
+      if (batchObj) {
+        supervisor = batchObj.Mentor || batchObj.Supervisor || batchObj['Industrial Supervisor'] || 'N/A';
+        project = batchObj.Project || 'N/A';
+      }
+    }
+
+    // Get all students in this batch
+    const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
+    if (!regSheet) {
+      return { status: 'error', message: 'Registrations sheet not found.' };
+    }
+    const allStudents = getSheetDataAsObjects(regSheet);
+    
+    // Filter by batch name
+    const members = allStudents
+      .filter(s => String(s.Batch || '').trim().toLowerCase() === String(batchName).trim().toLowerCase())
+      .map(s => {
+        // Handle names (combine First, Middle, Last)
+        const nameParts = [s.FirstName, s.MiddleName, s.LastName].filter(Boolean);
+        const fullName = nameParts.length > 0 ? nameParts.join(' ') : (s.Name || 'Unknown');
+        
+        return {
+          registrationId: s.RegistrationID,
+          name: fullName,
+          email: s.GmailID || s.Email,
+          phone: s.MobileNumber || s.Phone,
+          college: s.CollegeName || s.College,
+          department: s.Department,
+          startDate: s.InternshipStartDate ? formatDateDisplay(s.InternshipStartDate) : 'N/A',
+          endDate: s.InternshipEndDate ? formatDateDisplay(s.InternshipEndDate) : 'N/A'
+        };
+      });
+
+    return {
+      status: 'success',
+      batchName: batchName,
+      supervisor: supervisor,
+      project: project,
+      members: members
+    };
+  } catch (e) {
+    Logger.log('Error in getMyBatchMembers: ' + e.toString());
+    return { status: 'error', message: e.message };
   }
 }
 

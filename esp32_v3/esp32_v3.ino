@@ -143,6 +143,7 @@ volatile bool hasInternet = false;
 volatile bool deviceVerified = false;
 bool timeSynced = false;
 String savedSSID = "", savedPass = "", scriptId = "";
+String otaSource = "gdrive", otaLink = "https://raw.githubusercontent.com/gsv-electricals/rfid-firmware/main/version.json", otaId = "";
 String deviceUser = "", devicePass = ""; // ⭐️ ADDED: Mandatory Auth
 String localIpStr = "0.0.0.0", myMac = "";
 volatile SyncStatus currentSyncStatus = SYNC_INITIAL;
@@ -377,6 +378,9 @@ void setup() {
   if (scriptId == "") {
     scriptId = ""; // No default, force portal config
   }
+  otaSource = preferences.getString("otaSource", "gdrive");
+  otaLink = preferences.getString("otaLink", "https://raw.githubusercontent.com/gsv-electricals/rfid-firmware/main/version.json");
+  otaId = preferences.getString("otaId", "");
   deviceUser = preferences.getString("devUser", "admin");
   devicePass = preferences.getString("devPass", "password123");
   autoUpdateEnabled = preferences.getBool("autoUpdate", true);
@@ -2216,12 +2220,20 @@ void beepInventorySuccess() {
 
 FirmwareDetails fetchOnlineFirmwareDetails() {
   FirmwareDetails details = {false, "", "", false};
-  if (scriptId == "") return details;
+  
+  String url = "";
+  if (otaSource == "github") {
+    if (otaLink == "") return details;
+    url = otaLink;
+  } else {
+    String activeScriptId = (otaId != "") ? otaId : scriptId;
+    if (activeScriptId == "") return details;
+    url = "https://script.google.com/macros/s/" + activeScriptId + "/exec?action=get_firmware_version";
+  }
   
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
-  String url = "https://script.google.com/macros/s/" + scriptId + "/exec?action=get_firmware_version";
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   
   int code = -1;
@@ -2801,6 +2813,93 @@ void setupWebServer() {
     } else {
       server.send(400, "application/json", "{\"success\":false,\"message\":\"No update available or check failed\"}");
     }
+  });
+
+  server.on("/save_ota", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String source = server.arg("source");
+    String link = server.arg("link");
+    String id = server.arg("id");
+
+    if (source != "gdrive" && source != "github") {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid source\"}");
+      return;
+    }
+
+    otaSource = source;
+    otaLink = link;
+    otaId = id;
+
+    preferences.begin("gsv-rfid", false);
+    preferences.putString("otaSource", otaSource);
+    preferences.putString("otaLink", otaLink);
+    preferences.putString("otaId", otaId);
+    preferences.end();
+
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"OTA configuration saved successfully\"}");
+  });
+
+  server.on("/test_ota", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    
+    String testSource = server.arg("source");
+    if (testSource == "") testSource = otaSource;
+    
+    String testLink = server.arg("link");
+    if (testLink == "") testLink = otaLink;
+    
+    String testId = server.arg("id");
+    if (testId == "") testId = otaId;
+    
+    String url = "";
+    if (testSource == "github") {
+      url = testLink;
+    } else {
+      String activeScriptId = (testId != "") ? testId : scriptId;
+      url = "https://script.google.com/macros/s/" + activeScriptId + "/exec?action=get_firmware_version";
+    }
+
+    if (url == "") {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Missing URL/Script ID for test\"}");
+      return;
+    }
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    
+    bool testSuccess = false;
+    int code = -1;
+    String errorMessage = "";
+    String bodyContent = "";
+
+    if (http.begin(client, url)) {
+      http.setTimeout(8000);
+      code = http.GET();
+      if (code == 200 || code == 302) {
+        testSuccess = true;
+        bodyContent = http.getString();
+      } else {
+        errorMessage = "HTTP Error Code: " + String(code);
+      }
+      http.end();
+      client.stop();
+    } else {
+      errorMessage = "Failed to begin HTTP request";
+    }
+
+    String json = "{\"success\":" + String(testSuccess ? "true" : "false") + 
+                  ",\"code\":" + String(code) + 
+                  ",\"message\":\"" + (testSuccess ? "Connection successful" : errorMessage) + "\"" +
+                  ",\"response\":" + (bodyContent != "" ? "true" : "false") + "}";
+    server.send(200, "application/json", json);
   });
 
   server.onNotFound([]() {
@@ -3511,6 +3610,36 @@ void handleDashboard() {
                         </div>
                         <div class="text-white-50 small mt-1" id="ota-status-text">Downloading...</div>
                     </div>
+
+                    <!-- OTA Update Configuration Form -->
+                    <div class="border-top border-dark pt-3 mt-3">
+                        <div class="card-title text-info small mb-3" style="font-size: 1rem;"><i class="fa-solid fa-gear"></i> OTA Update Configuration</div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="text-white-50 small mb-2 d-block">Update Source</label>
+                                <div class="form-check form-check-inline me-3 d-inline-block">
+                                    <input class="form-check-input" type="radio" name="ota-source" id="ota-source-gdrive" value="gdrive" checked onclick="toggleOtaFields()">
+                                    <label class="form-check-label text-white-50" for="ota-source-gdrive">Google Drive (Apps Script)</label>
+                                </div>
+                                <div class="form-check form-check-inline d-inline-block">
+                                    <input class="form-check-input" type="radio" name="ota-source" id="ota-source-github" value="github" onclick="toggleOtaFields()">
+                                    <label class="form-check-label text-white-50" for="ota-source-github">GitHub Release (JSON Link)</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6 mb-3" id="ota-id-group">
+                                <label class="text-white-50 small mb-1">Apps Script ID (Optional fallback to default)</label>
+                                <input type="text" class="form-control bg-dark text-white border-secondary" id="ota-script-id" placeholder="Enter custom Script ID">
+                            </div>
+                            <div class="col-md-6 mb-3" id="ota-link-group" style="display: none;">
+                                <label class="text-white-50 small mb-1">GitHub Version JSON Link</label>
+                                <input type="text" class="form-control bg-dark text-white border-secondary" id="ota-github-link" placeholder="https://raw.githubusercontent.com/.../version.json">
+                            </div>
+                            <div class="col-md-12 text-md-end mt-2">
+                                <button class="btn-v btn-v-outline me-2" onclick="testOtaConnection(this)"><i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION</button>
+                                <button class="btn-v btn-v-green" onclick="saveOtaConfig(this)"><i class="fa-solid fa-save me-2"></i>SAVE CONFIG</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="v-card">
@@ -3618,6 +3747,14 @@ void handleDashboard() {
                         if (data.auto_update !== undefined) {
                             document.getElementById('ota-auto-update').checked = data.auto_update;
                         }
+                        if (data.ota_source === 'github') {
+                            document.getElementById('ota-source-github').checked = true;
+                        } else {
+                            document.getElementById('ota-source-gdrive').checked = true;
+                        }
+                        document.getElementById('ota-script-id').value = data.ota_id || '';
+                        document.getElementById('ota-github-link').value = data.ota_link || '';
+                        if (typeof toggleOtaFields === 'function') toggleOtaFields();
                         settingsInitialized = true;
                     }
                 }
@@ -3729,6 +3866,70 @@ void handleDashboard() {
             } catch (err) {
                 onlineVerEl.innerText = "Error";
                 showToast("Error checking version", "danger");
+            }
+        }
+
+        function toggleOtaFields() {
+            const isGithub = document.getElementById('ota-source-github').checked;
+            const idGroup = document.getElementById('ota-id-group');
+            const linkGroup = document.getElementById('ota-link-group');
+            if (isGithub) {
+                if (idGroup) idGroup.style.display = 'none';
+                if (linkGroup) linkGroup.style.display = 'block';
+            } else {
+                if (idGroup) idGroup.style.display = 'block';
+                if (linkGroup) linkGroup.style.display = 'none';
+            }
+        }
+
+        async function saveOtaConfig(btn) {
+            const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
+            const id = document.getElementById('ota-script-id').value.trim();
+            const link = document.getElementById('ota-github-link').value.trim();
+            
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetchAPI('/save_ota', { source, id, link });
+                if (res && res.success) {
+                    showToast("OTA configuration saved successfully!", "green");
+                    logSerial("OTA update source configuration saved.");
+                } else {
+                    showToast(res.message || "Failed to save OTA configuration", "danger");
+                }
+            } catch (err) {
+                showToast("Error saving OTA configuration", "danger");
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function testOtaConnection(btn) {
+            const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
+            const id = document.getElementById('ota-script-id').value.trim();
+            const link = document.getElementById('ota-github-link').value.trim();
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Testing...';
+            }
+            logSerial(`Testing OTA connection to source: ${source}...`);
+            try {
+                const res = await fetchAPI('/test_ota', { source, id, link });
+                if (res && res.success) {
+                    showToast("OTA connection test passed! Server reachable.", "green");
+                    logSerial(`OTA Connection test success: HTTP ${res.code}.`);
+                } else {
+                    showToast(res.message || "OTA connection test failed", "danger");
+                    logSerial(`OTA Connection test fail: HTTP ${res.code || 'error'} - ${res.message}.`);
+                }
+            } catch (err) {
+                showToast("Error testing connection", "danger");
+                logSerial(`OTA Connection test exception: ${err}`);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION';
+                }
             }
         }
 
@@ -4301,6 +4502,9 @@ void handleStatus() {
   json += "\"dev_user\":\"" + escapeJ(deviceUser) + "\",";
   json += "\"dev_pass\":\"" + escapeJ(devicePass) + "\",";
   json += "\"auto_update\":" + String(autoUpdateEnabled ? "true" : "false") + ",";
+  json += "\"ota_source\":\"" + escapeJ(otaSource) + "\",";
+  json += "\"ota_link\":\"" + escapeJ(otaLink) + "\",";
+  json += "\"ota_id\":\"" + escapeJ(otaId) + "\",";
   json += "\"process_step\":\"" + stepStr + "\"";
   json += "}";
   server.send(200, "application/json", json);

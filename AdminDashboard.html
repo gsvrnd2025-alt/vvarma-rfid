@@ -4112,6 +4112,7 @@
                         <option value="pending">Pending</option>
                         <option value="closed">Closed</option>
                         <option value="opt-out">Opt-out</option>
+                        <option value="inactive">Inactive</option>
                     </select>
                     <select id="manageStudentsBatchFilter" class="form-select form-select-sm" style="max-width: 200px;"
                         onchange="filterManageStudentsTable()">
@@ -4171,8 +4172,8 @@
                                 required>
                         </div>
                         <div class="col-md-3">
-                            <label for="newBatchMentor" class="form-label small fw-bold">Mentor</label>
-                            <input type="text" class="form-control" id="newBatchMentor" placeholder="Mentor Name"
+                            <label for="newBatchMentor" class="form-label small fw-bold">Industrial Supervisor</label>
+                            <input type="text" class="form-control" id="newBatchMentor" placeholder="Industrial Supervisor Name"
                                 required>
                         </div>
                         <div class="col-md-3">
@@ -4207,7 +4208,7 @@
                 <div class="batch-search-wrapper">
                     <i class="fas fa-search batch-search-icon"></i>
                     <input type="text" id="globalBatchSearch" class="batch-search-input"
-                        placeholder="Search batches, mentors, students, or IDs..." onkeyup="filterBatchesAndStudents()">
+                        placeholder="Search batches, supervisors, students, or IDs..." onkeyup="filterBatchesAndStudents()">
                 </div>
                 <div class="d-flex gap-2">
                     <button class="action-btn btn-view" onclick="loadBatches()"><i class="fas fa-sync-alt"></i>
@@ -7155,9 +7156,9 @@
                                         placeholder="e.g. Batch 101">
                                 </div>
                                 <div class="batch-form-group">
-                                    <label><i class="fas fa-user-tie me-1 text-primary"></i> Mentor Name</label>
+                                    <label><i class="fas fa-user-tie me-1 text-primary"></i> Industrial Supervisor Name</label>
                                     <input type="text" id="editBatchMentor" class="batch-input"
-                                        placeholder="Assigned Mentor">
+                                        placeholder="Assigned Industrial Supervisor">
                                 </div>
                                 <div class="batch-form-group">
                                     <label><i class="fas fa-project-diagram me-1 text-primary"></i> Focus
@@ -9251,7 +9252,7 @@
                 card.innerHTML = `
                     <div class="batch-header">
                         <div class="batch-name">${batch.name}</div>
-                        <div class="batch-meta">${batch.count || 0} Students | Mentor: ${batch.mentor || 'Unassigned'}</div>
+                        <div class="batch-meta">${batch.count || 0} Students | Supervisor: ${batch.mentor || 'Unassigned'}</div>
                     </div>
                     <div class="batch-actions">
                         <button class="action-btn btn-view" title="View Members" onclick="openBatchEditModal('${batch.name}')"><i class="fas fa-users"></i></button>
@@ -12433,7 +12434,7 @@
                         div.style.cursor = 'pointer';
                         div.innerHTML = `
                             <div class="fw-bold"><i class="fas fa-users text-primary me-2"></i> ${batch.name}</div>
-                            <div class="small text-muted">Mentor: ${batch.mentor || 'N/A'} | Status: ${batch.status || 'Active'}</div>
+                            <div class="small text-muted">Supervisor: ${batch.mentor || 'N/A'} | Status: ${batch.status || 'Active'}</div>
                         `;
                         div.onclick = () => {
                             document.getElementById('reportBatchSelect').value = batch.name;
@@ -13149,6 +13150,34 @@
                     if (!isRead) {
                         google.script.run.withSuccessHandler(() => loadNotifications()).markNotificationAsRead(ntf.NotificationID);
                     }
+
+                    // Parse notification and redirect
+                    const title = ntf.Title || '';
+                    const message = ntf.Message || '';
+                    const regIdMatch = (title + ' ' + message).match(/(GSV\/\d{4}\/\d+\/[A-Z0-9]+)/i);
+                    const regId = regIdMatch ? regIdMatch[1] : null;
+                    const lowerText = (title + ' ' + message).toLowerCase();
+
+                    if (/chat|message|sent you|replied/i.test(lowerText) && regId) {
+                        let studentName = regId;
+                        if (window.allStudentsData && Array.isArray(window.allStudentsData)) {
+                            const found = window.allStudentsData.find(s => String(s.registrationId || s.RegistrationID || "").trim().toUpperCase() === String(regId).trim().toUpperCase());
+                            if (found) studentName = found.name;
+                        }
+                        openAdminChat(regId, studentName);
+                    } else if (/request|leave|od/i.test(lowerText)) {
+                        showSection('attendanceRequests', document.querySelector('.sidebar-nav a[onclick*="attendanceRequests"]'));
+                    } else if (/document|upload|file|folder|bonafide|declaration|college id/i.test(lowerText)) {
+                        showSection('fileManager', document.querySelector('.sidebar-nav a[onclick*="fileManager"]'));
+                    } else if (/student|profile|registration/i.test(lowerText)) {
+                        showSection('manageStudents', document.querySelector('.sidebar-nav a[onclick*="manageStudents"]'));
+                    } else if (/generated document|certificate/i.test(lowerText)) {
+                        showSection('generateDocuments', document.querySelector('.sidebar-nav a[onclick*="generateDocuments"]'));
+                    } else if (/batch/i.test(lowerText)) {
+                        showSection('batches', document.querySelector('.sidebar-nav a[onclick*="batches"]'));
+                    } else if (/diary|task/i.test(lowerText)) {
+                        showSection('studentDiary', document.querySelector('.sidebar-nav a[onclick*="studentDiary"]'));
+                    }
                 };
 
                 list.appendChild(item);
@@ -13428,10 +13457,11 @@
             let html = '';
             const d = student.details || student;
             const status = d.status || d.ApplicationStatus || d.actualStatus || 'Unknown';
-            const statusClass = String(status || 'unknown').toLowerCase().replace(/\s+/g, '-');
+            let statusClass = String(status || 'unknown').toLowerCase().replace(/\s+/g, '-');
             let displayStatus = status;
             if (String(status).toLowerCase().trim() === 'assigned') {
-                displayStatus = 'Card Assigned';
+                displayStatus = 'Approved';
+                statusClass = 'approved';
             }
 
             html += `<span class="status-badge status-${statusClass}">${displayStatus}</span>`;
@@ -14518,7 +14548,7 @@
                     statusText = row.cells[5].textContent.toLowerCase().trim();
                 }
 
-                const isOptOutOrClosed = (statusText === 'opt-out' || statusText === 'optout' || statusText === 'closed');
+                const isOptOutOrClosed = (statusText === 'opt-out' || statusText === 'optout' || statusText === 'closed' || statusText === 'inactive');
 
                 if (statusVal === 'all') {
                     matchesStatus = !isOptOutOrClosed;
@@ -14602,9 +14632,12 @@
             } else {
                 students.forEach(student => {
                     const docCount = (student.projectDocCount || 0);
-                    const docHtml = student.hasDocuments
+                    let docHtml = student.hasDocuments
                         ? `<button class="action-btn btn-view btn-sm" onclick="openStudentFolder('${student.registrationId}')"><i class="fas fa-folder-tree"></i> Files ${docCount > 0 ? `<span class="doc-badge-count">${docCount}</span>` : ''}</button>`
                         : `<span class="status-badge status-pending" style="font-size:0.75rem;">Pending</span>`;
+                    if (student.allMandatoryDone === false) {
+                        docHtml += `<div style="margin-top:4px;"><span class="badge" style="background:#ffe3e3 !important;color:#e03131 !important;border:1px solid #ffc9c9 !important;font-size:0.65rem;font-weight:bold;padding:2px 5px;display:inline-flex;align-items:center;gap:3px;"><i class="fas fa-exclamation-circle" style="font-size:0.6rem;"></i>Incomplete</span></div>`;
+                    }
 
                     const d = student.details || student;
                     const studentStatus = d.status || d.ApplicationStatus || d.actualStatus || 'Unknown';
@@ -14619,9 +14652,9 @@
                         ${batchLabel}`;
 
                     // RFID column
-                    const rfidTag = student.rfidTag || '';
-                    const rfidHtml = rfidTag
-                        ? `<span class="badge fw-bold" style="background:#e8f5e9;color:#2e7d32;border:1px solid #a5d6a7;font-size:0.72rem;"><i class="fas fa-id-card me-1" style="font-size:0.65rem;"></i>${rfidTag}</span>`
+                    const rfidTag = student.rfidTag || (d && (d.rfidTag || d.RFID_TagID)) || '';
+                    const rfidHtml = rfidTag && String(rfidTag).trim()
+                        ? `<span class="badge fw-bold" style="background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;font-size:0.72rem;"><i class="fas fa-id-card me-1" style="font-size:0.65rem;"></i>Card Assigned (${rfidTag})</span>`
                         : `<span class="text-muted" style="font-size:0.8rem;">—</span>`;
 
                     tbody.innerHTML += `
@@ -14722,7 +14755,7 @@
                         <div class="batch-info-item">
                             <div class="batch-info-icon"><i class="fas fa-user-tie"></i></div>
                             <div class="batch-info-text">
-                                <span class="batch-info-label">Mentor</span>
+                                <span class="batch-info-label">Industrial Supervisor</span>
                                 <span class="batch-info-value">${b.mentor}</span>
                             </div>
                         </div>
