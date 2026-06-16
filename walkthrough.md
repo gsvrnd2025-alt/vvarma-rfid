@@ -333,3 +333,49 @@ We have successfully refined the student assignment to batches inside the Batch 
 - Successfully pushed the updated backend and frontend code to the Google Apps Script project using `clasp push`.
 - Deployed the changes under active deployment ID `AKfycbxvPlPHaajzeUdf8JqzPBe_5n7vswC18RPv1N9rwprjf1w6k-4slmE2aCzjDgDRsoIGDw` as **Version 113**.
 - Created a fresh deployment ID `AKfycbzS9MN9ZOkDQ8sUsJLcwBKyizizcWhOgp9rAi5Mn_x4mJSSKi9ZC6RUitWRa1t5ot1kQA` as **Version 114** to bypass browser caching.
+
+---
+
+# Walkthrough: Student Compliance Lock, Custom Inventory UI & ESP32 OTA / Switch Upgrades
+
+We have successfully implemented student compliance locks, welcome note warning banners, RFID document check guards, immediate long-press ESP32 mode switching, custom inventory LCD layout/chimes, and local dashboard OTA firmware updates.
+
+## Changes Made
+
+### 1. Student Portal Front-End (`StudentDashboard.html`)
+- **Compliance Lock Alert Banners**: Added `#documentLockAdvisory` and `#profileIncompleteAdvisory` banners under the welcome header showing missing mandatory documents, locked modules, and incomplete profile warnings (Roll/Register Number, CGPA, Department, Batch).
+- **Dismissible Document Modal**: Added an "Explore Restricted Portal" dismiss button to the `#documentUploadReminderModal` allowing students to view the read-only sections.
+- **Dynamic Access Restrictions**: Updated `enforceAccessRestrictions()` to check all active statuses (`approved`, `active`, `assigned`) and lock non-permitted sections (Tasks, Diary, Attendance, Requests, Schedule, Certificates), keeping only Profile, Notices, File Manager, and Projects visible.
+- **Projects & Tasks Read-Only Restriction**: Blocked project/task submissions and edits if documents are missing, replacing the forms with compliance warning alerts.
+
+### 2. Google Apps Script Backend (`code.js`)
+- **Self-Healing Templates**: Updated `getStudentApplicationFormPdf()` to load template IDs dynamically from setting keys using `getTemplateIdForDocType('applicationForm')`.
+- **Fail-Safe Folder Fallback**: Updated folder resolver helpers to fall back to the user's `DriveApp.getRootFolder()` if folder queries or creation fail due to permissions.
+- **Public Upload Sharing**: Enforced `file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW)` on files uploaded via `uploadStudentFile()`.
+- **RFID Compliance Verification**: Modified `markRfidAttendance()` to verify that the student has uploaded `BonafideUrl`, `DeclarationUrl`, and `CollegeIdUrl`; denying attendance scans with a `'Portal Inactive'` message otherwise.
+- **Firmware Version API**: Added the `get_firmware_version` action to `doGet()` returning the latest firmware version and bin file download URL.
+
+### 3. ESP32 Microcontroller Firmware (`esp32_v3/esp32_v3.ino`)
+- **Partition Table Upgrade**: Compiled using the `min_spiffs` partition configuration (`1.9MB APP with OTA/128KB SPIFFS`) to fit the enhanced firmware size.
+- **Immediate Long-Press Mode Switching**: Updated `handleButtons()` to immediately trigger inventory mode (`MODE_INV`) on a 3-second hold of the mode button without waiting for button release.
+- **Customized Inventory LCD & Chime**:
+  - In `processCardTask()` and `UI_RESULT` engine, bypassed student/present details on the screen for inventory scans.
+  - Displays `CARD ADDED OK / Added to Pool` on success and plays `beepInventorySuccess()` (a pleasant double-beep chime).
+- **Local OTA Upgrade Integration**:
+  - Added endpoints `/toggle_auto_update`, `/check_version`, and `/trigger_update` for firmware management.
+  - Inserted the "SYSTEM FIRMWARE & OTA UPGRADE" card inside the Configuration tab on the local web dashboard, with auto-update switch toggle, local/online versions display, and check/upgrade buttons.
+  - Enforced `initiateOtaCheckOnBoot()` on startup to perform automatic firmware upgrades on connection.
+
+## Verification & Compilation Results
+
+### 1. Backend Syntax & Deployment
+- Validated JavaScript syntax correctness: `node -c code.js` (Completed successfully).
+- Backend deployment pushed via Clasp: `npx clasp push` (Pushed 5 files successfully).
+
+### 2. Firmware Compilation
+- Firmware compiled successfully using the expanded partition layout in `arduino-cli`:
+  ```powershell
+  arduino-cli compile --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs esp32_v3
+  ```
+  - **Result**: `Sketch uses 1315327 bytes (66%) of program storage space. Maximum is 1966080 bytes.`
+
