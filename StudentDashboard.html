@@ -6191,7 +6191,7 @@
                     } else {
                         showErrorModal(res.message);
                     }
-                }).uploadStudentFile(loggedInStudentData.registrationId, e.target.result, file.name);
+                }).uploadStudentFile(loggedInStudentData.registrationId || sessionStorage.getItem('gsv_student_regId') || '', e.target.result, file.name);
             };
             reader.readAsDataURL(file);
         }
@@ -6959,7 +6959,7 @@
                         .withFailureHandler(error => {
                             resolve({ status: 'error', message: error.message });
                         })
-                        .uploadStudentFile(loggedInStudentData.registrationId, e.target.result, `${docType}_${file.name}`);
+                        .uploadStudentFile(loggedInStudentData.registrationId || sessionStorage.getItem('gsv_student_regId') || '', e.target.result, `${docType}_${file.name}`);
                 };
                 reader.onerror = () => {
                     resolve({ status: 'error', message: 'Failed to read file' });

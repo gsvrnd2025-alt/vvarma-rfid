@@ -2820,57 +2820,94 @@ function getSheet(sheetName) {
  * Structure: Root > Project Name > Batch Name > Student ID
  */
 function getOrCreateStudentFolder(regId, type = '') {
+  let rootFolder;
   try {
-    let rootFolder;
+    rootFolder = DriveApp.getFolderById(getSystemFolderId('uploads'));
+  } catch (folderErr) {
+    Logger.log(`Failed to get uploads folder, falling back to root folder: ${folderErr.toString()}`);
     try {
-      rootFolder = DriveApp.getFolderById(getSystemFolderId('uploads'));
-    } catch (folderErr) {
-      Logger.log(`Failed to get uploads folder, falling back to root folder: ${folderErr.toString()}`);
       rootFolder = DriveApp.getRootFolder();
+    } catch (rootErr) {
+      Logger.log(`Critical: Failed to access root folder: ${rootErr.toString()}`);
     }
-    const studentInfoResp = getStudentFullData(regId);
-    if (studentInfoResp.status !== 'success') throw new Error("Student not found");
-    const student = studentInfoResp.studentData;
+  }
 
-    const batchName = student.Batch || 'No Batch';
-    let projectName = 'Unassigned Projects';
+  // If even rootFolder is null/undefined, try a final fallback to default DriveApp operations
+  if (!rootFolder) {
+    try {
+      rootFolder = DriveApp.getRootFolder();
+    } catch (err) {
+      Logger.log("Fatal: DriveApp is completely inaccessible");
+      return null;
+    }
+  }
+
+  let student;
+  try {
+    const studentInfoResp = getStudentFullData(regId);
+    if (studentInfoResp.status === 'success') {
+      student = studentInfoResp.studentData;
+    }
+  } catch (studentErr) {
+    Logger.log(`Warning: Failed to fetch student data for ${regId}: ${studentErr.toString()}`);
+  }
+
+  const batchName = (student && student.Batch) ? student.Batch : 'No Batch';
+  let projectName = 'Unassigned Projects';
+  try {
     const batchSheet = getSheet(SHEET_NAMES.BATCHES);
     if (batchSheet) {
       const data = getSheetDataAsObjects(batchSheet);
       const batchRow = data.find(b => b.BatchName === batchName);
       if (batchRow && batchRow.Project) projectName = batchRow.Project;
     }
+  } catch (batchErr) {
+    Logger.log(`Warning: Failed to query batch sheets: ${batchErr.toString()}`);
+  }
 
-    let projectFolder;
+  let projectFolder = rootFolder;
+  try {
     let projFolders = rootFolder.getFoldersByName(projectName);
     projectFolder = projFolders.hasNext() ? projFolders.next() : rootFolder.createFolder(projectName);
+  } catch (projErr) {
+    Logger.log(`Warning: Failed to create/get project folder '${projectName}', falling back to root: ${projErr.toString()}`);
+  }
 
-    let batchFolder;
+  let batchFolder = projectFolder;
+  try {
     let batchFolders = projectFolder.getFoldersByName(batchName);
     batchFolder = batchFolders.hasNext() ? batchFolders.next() : projectFolder.createFolder(batchName);
+  } catch (batchErr) {
+    Logger.log(`Warning: Failed to create/get batch folder '${batchName}', falling back to project/root: ${batchErr.toString()}`);
+  }
 
-    const safeRegId = String(regId).replace(/[\/\\]/g, '_');
-    let studentFolder;
+  const safeRegId = String(regId || "unknown_student").replace(/[\/\\]/g, '_');
+  let studentFolder = batchFolder;
+  try {
     let studentFolders = batchFolder.getFoldersByName(safeRegId);
     studentFolder = studentFolders.hasNext() ? studentFolders.next() : batchFolder.createFolder(safeRegId);
+  } catch (studErr) {
+    Logger.log(`Warning: Failed to create/get student folder '${safeRegId}', falling back to batch: ${studErr.toString()}`);
+  }
 
-    if (type) {
-      const dirMap = {
-        'mandatory': 'Mandatory Documents',
-        'generated': 'Generated Documents',
-        'Project': 'Project Files',
-        'Task': 'Task Submissions'
-      };
-      const dirName = dirMap[type] || type;
+  if (type) {
+    const dirMap = {
+      'mandatory': 'Mandatory Documents',
+      'generated': 'Generated Documents',
+      'Project': 'Project Files',
+      'Task': 'Task Submissions'
+    };
+    const dirName = dirMap[type] || type;
+    try {
       let typeFolders = studentFolder.getFoldersByName(dirName);
       return typeFolders.hasNext() ? typeFolders.next() : studentFolder.createFolder(dirName);
+    } catch (typeErr) {
+      Logger.log(`Warning: Failed to create/get type folder '${dirName}', falling back to student folder: ${typeErr.toString()}`);
+      return studentFolder;
     }
-
-    return studentFolder;
-  } catch (e) {
-    Logger.log("Error in getOrCreateStudentFolder: " + e.toString());
-    return null;
   }
+
+  return studentFolder;
 }
 function getColIdxByName(sheet, name) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
@@ -8396,7 +8433,16 @@ function uploadChatFile(arg1, arg2, arg3, arg4) {
     const base64Data = fileData.base64 || fileData.data || fileData.content;
     const decodedContent = Utilities.base64Decode(base64Data);
     const blob = Utilities.newBlob(decodedContent, fileData.type || fileData.mimeType, fileData.name || fileData.fileName);
-    const folder = DriveApp.getFolderById(getSystemFolderId('chat'));
+    const folderId = getSystemFolderId('chat');
+    let folder;
+    try {
+      folder = DriveApp.getFolderById(folderId);
+    } catch (e) {
+      folder = DriveApp.getRootFolder();
+    }
+    if (!folder) {
+      throw new Error("Unable to access Google Drive storage. Please contact the administrator.");
+    }
     const driveFile = folder.createFile(blob);
     try {
       driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -9434,6 +9480,9 @@ function handleSubmission(sheetName, type, regId, itemId, notes, fileData) {
     let fileName = '';
     if (fileData) {
       const studentFolder = getOrCreateStudentFolder(regId, type);
+      if (!studentFolder) {
+        throw new Error("Unable to access or create your upload folder on Google Drive. Please contact the administrator.");
+      }
       const prefix = `${type}_${itemId}_`.replace(/\s+/g, '_');
       const blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType, prefix + fileData.fileName);
       const file = studentFolder.createFile(blob);
@@ -9872,6 +9921,9 @@ function requestStudentAttendanceCorrection(registrationId, date, reason, type, 
     let fileUrl = '';
     if (fileData) {
       const folder = getOrCreateStudentFolder(registrationId, 'generated');
+      if (!folder) {
+        throw new Error("Unable to access or create your upload folder on Google Drive. Please contact the administrator.");
+      }
       const blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType, "Correction_" + fileData.fileName);
       const file = folder.createFile(blob);
       try {
@@ -12515,6 +12567,9 @@ function submitUnifiedStudentRequest(registrationId, requestType, date, reason, 
 
     if (fileData) {
       const folder = getOrCreateStudentFolder(registrationId, 'mandatory');
+      if (!folder) {
+        throw new Error("Unable to access or create your upload folder on Google Drive. Please contact the administrator.");
+      }
       const blob = Utilities.newBlob(Utilities.base64Decode(fileData.data), fileData.mimeType, `${requestType.replace(' ', '_')}_${registrationId}_${date}_${fileData.fileName}`);
       const file = folder.createFile(blob);
       try {
@@ -16454,6 +16509,9 @@ function uploadStudentFile(regId, base64Data, fileName) {
     }
 
     const studentFolder = getOrCreateStudentFolder(regId, subType);
+    if (!studentFolder) {
+      throw new Error("Unable to access or create your upload folder on Google Drive. Please contact the administrator.");
+    }
     const file = studentFolder.createFile(blob);
     try {
       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -16578,6 +16636,9 @@ function submitDocumentReplacementRequest(regId, docType, fileName, base64Data) 
     const blob = Utilities.newBlob(bytes, contentType, finalFileName);
 
     const studentFolder = getOrCreateStudentFolder(regId, 'General Uploads');
+    if (!studentFolder) {
+      throw new Error("Unable to access or create your upload folder on Google Drive. Please contact the administrator.");
+    }
     const file = studentFolder.createFile(blob);
     const fileUrl = file.getUrl();
 
