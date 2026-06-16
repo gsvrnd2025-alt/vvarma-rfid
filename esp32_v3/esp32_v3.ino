@@ -31,6 +31,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <HTTPUpdate.h>
 #include <Wire.h>
 #include <esp_task_wdt.h>
 #include <time.h>
@@ -147,6 +148,7 @@ String localIpStr = "0.0.0.0", myMac = "";
 volatile SyncStatus currentSyncStatus = SYNC_INITIAL;
 unsigned long lastErrorBeepTime = 0;
 bool initialSyncDone = false;
+bool autoUpdateEnabled = true;
 
 // RFID Debounce & Scan Lock
 const unsigned long RFID_DEBOUNCE_MS = 3000; // Ignore same card for 3s
@@ -263,7 +265,15 @@ byte signal3[8] = {0b00000, 0b00000, 0b01110, 0b10001,
 byte coffeeIcon[8] = {0b00000, 0b01010, 0b01010, 0b11111,
                       0b11111, 0b11111, 0b01110, 0b00000};
 
+struct FirmwareDetails {
+  bool success;
+  String latestVersion;
+  String downloadUrl;
+  bool updateAvailable;
+};
+
 // ==================== PROTOTYPES ====================
+FirmwareDetails fetchOnlineFirmwareDetails();
 void webLog(String msg);
 void initializeLCD();
 void mDNS_begin();
@@ -291,6 +301,8 @@ void parseGoogleResponse(String response);
 void saveInventoryToSheet(String uid);
 void handleRFID();
 void handleButtons();
+void beepInventorySuccess();
+void initiateOtaCheckOnBoot();
 
 void updateLcdConnectionIcons();
 void showBootError(String errorMsg);
@@ -367,6 +379,7 @@ void setup() {
   }
   deviceUser = preferences.getString("devUser", "admin");
   devicePass = preferences.getString("devPass", "password123");
+  autoUpdateEnabled = preferences.getBool("autoUpdate", true);
   preferences.end();
 
   Serial.println("Hardware: Admin Credentials Loaded:");
@@ -559,6 +572,8 @@ void setup() {
       beep(1200, 200);
       delay(100);
       beep(1800, 300);
+
+      initiateOtaCheckOnBoot();
 
       return; // Success! Exit setup
     } else {
@@ -1052,6 +1067,34 @@ void updateUIEngine() {
   case UI_RESULT: {
     String displayMsg = "";
     unsigned long elapsed = millis() - resultTimer;
+
+    // ── INVENTORY MODE: do not cycle student info, just hold success/fail screen ──
+    if (currentMode == MODE_INV) {
+      if (lastResponseSuccess) {
+        lcdLock();
+        lcd.setCursor(0, 0);
+        lcd.print("CARD ADDED OK   ");
+        lcd.setCursor(0, 1);
+        lcd.print("Added to Pool   ");
+        lcdUnlock();
+      } else {
+        lcdLock();
+        lcd.setCursor(0, 0);
+        lcd.print("CARD ADDED FAIL ");
+        lcd.setCursor(0, 1);
+        String err = lastStatusMsg;
+        if (err == "") err = "Already Exists";
+        if (err.length() > 16) err = err.substring(0, 16);
+        while (err.length() < 16) err += " ";
+        lcd.print(err);
+        lcdUnlock();
+      }
+      if (elapsed > 2000) {
+        uiState = UI_HOME;
+        resultStep = RES_NONE;
+      }
+      break;
+    }
 
     // ── VRF MODE: separate short flow ──
     if (currentMode == MODE_VERIFY) {
@@ -1550,17 +1593,24 @@ void processCardTask(void *parameter) {
         // VRF mode: Use blocking VRF display
         handleBlockingVrfDisplay();
       } else if (currentMode == MODE_INV) {
-        // Check if student info is available (registered student denied/success)
-        bool hasStudentInfo = (currentRegId.length() > 0 && currentRegId != "N/A" &&
-                               currentName != "UNAUTHORIZED" && currentName != "BLOCKED" &&
-                               currentName != "DATABASE ERROR" && currentName != "REGISTRY ERROR" &&
-                               currentName != "DEVICE BLOCKED");
-
         // 1. Immediately display the outcome on the LCD
         lcdLock();
         lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print(lastResponseSuccess ? "  >> SUCCESS <<" : "  >> DENIED <<  ");
+        if (lastResponseSuccess) {
+          lcd.setCursor(0, 0);
+          lcd.print("CARD ADDED OK   ");
+          lcd.setCursor(0, 1);
+          lcd.print("Added to Pool   ");
+        } else {
+          lcd.setCursor(0, 0);
+          lcd.print("CARD ADDED FAIL ");
+          lcd.setCursor(0, 1);
+          String err = lastStatusMsg;
+          if (err == "") err = "Already Exists";
+          if (err.length() > 16) err = err.substring(0, 16);
+          while (err.length() < 16) err += " ";
+          lcd.print(err);
+        }
         lcdUnlock();
 
         // 2. Trigger LED result flash
@@ -1568,8 +1618,8 @@ void processCardTask(void *parameter) {
 
         // 3. Trigger Beep (blocking)
         if (lastResponseSuccess) {
-          beepSuccess();
-          delay(1000); // Hold success screen for extra 1s (total ~1.5s visibility)
+          beepInventorySuccess();
+          delay(1000); // Hold success screen for extra 1s
         } else {
           beepDenied(); // Blocks for 3s (total 3s visibility during alarm)
         }
@@ -1577,19 +1627,7 @@ void processCardTask(void *parameter) {
         // 4. Route to next step in UI result flow and start timer AFTER beep finishes
         uiState = UI_RESULT;
         resultTimer = millis();
-
-        if (lastResponseSuccess) {
-          // Success: skip outcome header (since we just showed it) and go straight to Reason (3s)
-          resultStep = RES_STATUS_DETAIL;
-        } else {
-          if (hasStudentInfo) {
-            // Denied with student info: skip outcome header and go straight to Reason (3s)
-            resultStep = RES_STATUS_DETAIL;
-          } else {
-            // Denied no student info: skip outcome header and go straight to Reason (3s)
-            resultStep = RES_DENIED_1;
-          }
-        }
+        resultStep = RES_STATUS_DETAIL;
       } else {
         // Attendance modes (IN / OUT)
         handleBlockingResultDisplay();
@@ -2131,22 +2169,34 @@ void handleButtons() {
   }
 
   // Mode button (Pin 15) - Short press toggle IN/OUT, Long press for Inventory
-  if (modePressed && !lastModeState)
+  static bool modeLongPressedTriggered = false;
+  if (modePressed && !lastModeState) {
     modePressStart = millis();
-  if (!modePressed && lastModeState && modePressStart > 0) {
+    modeLongPressedTriggered = false;
+  }
+  
+  if (modePressed && modePressStart > 0 && !modeLongPressedTriggered) {
     if (millis() - modePressStart > 3000) {
       currentMode = MODE_INV;
       beep(1500, 200);
-    } else if (millis() - modePressStart > 50) {
-      if (currentMode == MODE_INV)
-        currentMode = MODE_IN;
-      else if (currentMode == MODE_IN)
-        currentMode = MODE_OUT;
-      else if (currentMode == MODE_OUT)
-        currentMode = MODE_VERIFY;
-      else
-        currentMode = MODE_IN;
-      beep(1000, 100);
+      modeLongPressedTriggered = true;
+    }
+  }
+
+  if (!modePressed && lastModeState && modePressStart > 0) {
+    if (!modeLongPressedTriggered) {
+      unsigned long dur = millis() - modePressStart;
+      if (dur > 50) {
+        if (currentMode == MODE_INV)
+          currentMode = MODE_IN;
+        else if (currentMode == MODE_IN)
+          currentMode = MODE_OUT;
+        else if (currentMode == MODE_OUT)
+          currentMode = MODE_VERIFY;
+        else
+          currentMode = MODE_IN;
+        beep(1000, 100);
+      }
     }
     modePressStart = 0;
   }
@@ -2156,6 +2206,112 @@ void handleButtons() {
 }
 
 void beep(int freq, int duration) { tone(BUZZER_PIN, freq, duration); }
+void beepInventorySuccess() {
+  tone(BUZZER_PIN, 2000, 80);
+  delay(100);
+  tone(BUZZER_PIN, 2500, 100);
+}
+
+
+
+FirmwareDetails fetchOnlineFirmwareDetails() {
+  FirmwareDetails details = {false, "", "", false};
+  if (scriptId == "") return details;
+  
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  String url = "https://script.google.com/macros/s/" + scriptId + "/exec?action=get_firmware_version";
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  
+  int code = -1;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    if (http.begin(client, url)) {
+      http.setTimeout(10000);
+      code = http.GET();
+      if (code == 200 || code == 302) {
+        break;
+      }
+      http.end();
+      client.stop();
+    }
+    delay(1000);
+  }
+  
+  if (code == 200 || code == 302) {
+    String response = http.getString();
+    http.end();
+    client.stop();
+    
+    // Parse JSON
+    JSON_DOC_TYPE doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      details.success = true;
+      details.latestVersion = doc["version"] | "";
+      details.downloadUrl = doc["downloadUrl"] | "";
+      if (details.latestVersion != "" && details.latestVersion != String(FIRMWARE_VERSION)) {
+        details.updateAvailable = true;
+      }
+    }
+  } else {
+    http.end();
+    client.stop();
+  }
+  return details;
+}
+
+bool performOtaUpdate(String downloadUrl) {
+  if (downloadUrl == "") return false;
+  
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  httpUpdate.onProgress([](int cur, int total) {
+    Serial.printf("OTA Progress: %d%%\r\n", (cur * 100) / total);
+  });
+  
+  t_httpUpdate_return ret = httpUpdate.update(client, downloadUrl);
+  
+  switch(ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\r\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+      return false;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("HTTP_UPDATE_NO_UPDATES");
+      return false;
+    case HTTP_UPDATE_OK:
+      Serial.println("HTTP_UPDATE_OK");
+      return true;
+  }
+  return false;
+}
+
+void initiateOtaCheckOnBoot() {
+  if (!autoUpdateEnabled) {
+    Serial.println("OTA: Auto update disabled, skipping boot check.");
+    return;
+  }
+  
+  Serial.println("OTA: Auto update enabled, checking for update on boot...");
+  FirmwareDetails details = fetchOnlineFirmwareDetails();
+  if (details.success && details.updateAvailable) {
+    Serial.println("OTA: Found newer version " + details.latestVersion + ", performing update...");
+    lcdLock();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Updating FW...  ");
+    lcd.setCursor(0, 1);
+    String verSub = details.latestVersion;
+    if (verSub.length() > 16) verSub = verSub.substring(0, 16);
+    lcd.print(verSub);
+    lcdUnlock();
+    
+    performOtaUpdate(details.downloadUrl);
+  } else {
+    Serial.println("OTA: No update available on boot.");
+  }
+}
 
 // ✅ SUCCESS sound: single loud clear ding (one clean tone)
 void beepSuccess() {
@@ -2604,6 +2760,48 @@ void setupWebServer() {
   server.on("/validate", handleValidate);
   server.on("/reset_display", handleResetDisplay);
   server.on("/get_script_id", handleGetScriptId);
+
+  server.on("/toggle_auto_update", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String enabled = server.arg("enabled");
+    autoUpdateEnabled = (enabled == "1");
+    preferences.begin("gsv-rfid", false);
+    preferences.putBool("autoUpdate", autoUpdateEnabled);
+    preferences.end();
+    server.send(200, "application/json", "{\"success\":true}");
+  });
+
+  server.on("/check_version", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    FirmwareDetails details = fetchOnlineFirmwareDetails();
+    if (details.success) {
+      String json = "{\"success\":true,\"latest\":\"" + details.latestVersion + "\",\"updateAvailable\":" + String(details.updateAvailable ? "true" : "false") + "}";
+      server.send(200, "application/json", json);
+    } else {
+      server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to check version\"}");
+    }
+  });
+
+  server.on("/trigger_update", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    FirmwareDetails details = fetchOnlineFirmwareDetails();
+    if (details.success && details.updateAvailable) {
+      server.send(200, "application/json", "{\"success\":true,\"message\":\"Starting OTA update\"}");
+      delay(500); // Allow server response to send
+      performOtaUpdate(details.downloadUrl);
+    } else {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"No update available or check failed\"}");
+    }
+  });
 
   server.onNotFound([]() {
     if (currentState == SYSTEM_WIFI_CONFIG) {
@@ -3285,6 +3483,36 @@ void handleDashboard() {
                     </div>
                 </div>
 
+                <div class="v-card mb-4">
+                    <div class="card-title text-info"><i class="fa-solid fa-cloud-arrow-up"></i> SYSTEM FIRMWARE & OTA UPGRADE</div>
+                    <div class="row align-items-center">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <div class="d-flex align-items-center mb-2">
+                                <span class="text-white-50 me-2">Local Version:</span>
+                                <span class="fw-bold text-success" id="firmware-local-version">v7.0.1-ELITE</span>
+                            </div>
+                            <div class="d-flex align-items-center mb-3">
+                                <span class="text-white-50 me-2">Latest Online:</span>
+                                <span class="fw-bold text-warning" id="firmware-online-version">Checking...</span>
+                            </div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="ota-auto-update" checked onclick="toggleAutoUpdate(this)">
+                                <label class="form-check-label text-white-50 small" for="ota-auto-update">Enable Automatic Updates (Checks on Boot)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6 text-md-end">
+                            <button class="btn-v btn-v-outline me-2 mb-2" onclick="checkFirmwareVersion()"><i class="fa-solid fa-arrows-rotate me-2"></i>CHECK FOR UPDATE</button>
+                            <button class="btn-v btn-v-green mb-2" id="btn-trigger-update" onclick="triggerOTAUpdate()" disabled><i class="fa-solid fa-circle-down me-2"></i>INSTALL UPDATE</button>
+                        </div>
+                    </div>
+                    <div id="ota-progress-container" class="mt-3 d-none">
+                        <div class="progress bg-dark" style="height: 10px; border: 1px solid #333; border-radius: 5px;">
+                            <div id="ota-progress-bar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <div class="text-white-50 small mt-1" id="ota-status-text">Downloading...</div>
+                    </div>
+                </div>
+
                 <div class="v-card">
                     <div class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ADVANCED RECOVERY</div>
                     <p class="text-white-50 small mb-4">Factory reset wipes all local NVS memory (WiFi, Script ID). Device will reboot in AP mode.</p>
@@ -3387,6 +3615,9 @@ void handleDashboard() {
                         document.getElementById('conf-ssid').value = data.saved_ssid || '';
                         document.getElementById('conf-admin-user').value = data.dev_user || 'admin';
                         document.getElementById('conf-admin-pass').value = data.dev_pass || 'password123';
+                        if (data.auto_update !== undefined) {
+                            document.getElementById('ota-auto-update').checked = data.auto_update;
+                        }
                         settingsInitialized = true;
                     }
                 }
@@ -3470,6 +3701,84 @@ void handleDashboard() {
             else if (id === 'attendance') setMode('IN');
             
             logSerial(`UI: Switched to ${id.toUpperCase()}`);
+        }
+
+        async function checkFirmwareVersion() {
+            logSerial("Checking firmware version...");
+            const onlineVerEl = document.getElementById('firmware-online-version');
+            if (onlineVerEl) onlineVerEl.innerText = "Checking...";
+            
+            try {
+                const res = await fetchAPI('/check_version');
+                if (res && res.success) {
+                    onlineVerEl.innerText = res.latest;
+                    const btn = document.getElementById('btn-trigger-update');
+                    if (res.updateAvailable) {
+                        showToast(`New firmware ${res.latest} available!`, "warning");
+                        logSerial(`Firmware update available! Current: v7.0.1-ELITE, Latest: ${res.latest}`);
+                        if (btn) btn.disabled = false;
+                    } else {
+                        showToast("Firmware is up to date", "green");
+                        logSerial("Firmware is up to date.");
+                        if (btn) btn.disabled = true;
+                    }
+                } else {
+                    onlineVerEl.innerText = "Error checking";
+                    showToast("Failed to check version", "danger");
+                }
+            } catch (err) {
+                onlineVerEl.innerText = "Error";
+                showToast("Error checking version", "danger");
+            }
+        }
+
+        async function toggleAutoUpdate(el) {
+            const enabled = el.checked;
+            const res = await fetchAPI('/toggle_auto_update', { enabled: enabled ? "1" : "0" });
+            if (res && res.success) {
+                showToast(`Auto update ${enabled ? 'enabled' : 'disabled'}`, "green");
+                logSerial(`Auto update preference updated: ${enabled}`);
+            } else {
+                showToast("Failed to save preference", "danger");
+                el.checked = !enabled; // revert
+            }
+        }
+
+        async function triggerOTAUpdate() {
+            if (!confirm("Are you sure you want to install the update? The device will restart.")) return;
+            
+            const pBar = document.getElementById('ota-progress-bar');
+            const pCont = document.getElementById('ota-progress-container');
+            const sText = document.getElementById('ota-status-text');
+            const btn = document.getElementById('btn-trigger-update');
+            
+            if (pCont) pCont.classList.remove('d-none');
+            if (pBar) pBar.style.width = "20%";
+            if (sText) sText.innerText = "Initiating upgrade...";
+            if (btn) btn.disabled = true;
+            
+            logSerial("Starting OTA firmware update...");
+            
+            try {
+                const res = await fetchAPI('/trigger_update');
+                if (res && res.success) {
+                    if (pBar) pBar.style.width = "100%";
+                    if (sText) sText.innerText = "Updating... Device rebooting.";
+                    showToast("Firmware updating! Rebooting device...", "green");
+                    logSerial("OTA Update triggered successfully. Device rebooting...");
+                } else {
+                    if (pCont) pCont.classList.add('d-none');
+                    if (sText) sText.innerText = "Update failed";
+                    if (btn) btn.disabled = false;
+                    showToast(res.message || "Update failed", "danger");
+                    logSerial("OTA Update failed: " + (res.message || "unknown error"));
+                }
+            } catch (err) {
+                if (pCont) pCont.classList.add('d-none');
+                if (btn) btn.disabled = false;
+                showToast("Connection lost during update. Check device state.", "danger");
+                logSerial("Connection lost. Device may be updating and rebooting.");
+            }
         }
 
         async function setMode(m) {
@@ -3991,6 +4300,7 @@ void handleStatus() {
   json += "\"last_status_msg\":\"" + escapeJ(lastStatusMsg) + "\",";
   json += "\"dev_user\":\"" + escapeJ(deviceUser) + "\",";
   json += "\"dev_pass\":\"" + escapeJ(devicePass) + "\",";
+  json += "\"auto_update\":" + String(autoUpdateEnabled ? "true" : "false") + ",";
   json += "\"process_step\":\"" + stepStr + "\"";
   json += "}";
   server.send(200, "application/json", json);

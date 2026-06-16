@@ -3570,6 +3570,44 @@
                     </div>
                 </div>
 
+                <!-- Document Lock Advisory Banner -->
+                <div id="documentLockAdvisory" class="alert alert-danger d-none mb-4 shadow-sm border-0 animate__animated animate__fadeIn"
+                    style="border-left: 5px solid #dc2626 !important; border-radius: 16px;">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <i class="bi bi-shield-lock-fill fs-4 text-danger"></i>
+                        </div>
+                        <div class="ms-3 flex-grow-1">
+                            <h6 class="alert-heading fw-bold mb-1" style="color: #991b1b;">Welcome! Portal Locked - Action Required</h6>
+                            <p class="mb-0 small text-dark">Welcome to your internship portal! However, you have not uploaded all the mandatory documents: <strong id="missingDocsBannerText" class="text-danger"></strong>. You can only view your Profile, Notices, File Manager, and Projects in read-only mode. Please click below to upload your documents immediately and unlock all features.</p>
+                        </div>
+                        <div class="ms-3">
+                            <button class="btn btn-sm btn-danger rounded-pill px-3" onclick="showStudentSection('uploadDocuments')">
+                                <i class="bi bi-cloud-upload me-1"></i> Upload Documents
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Incomplete Advisory Banner -->
+                <div id="profileIncompleteAdvisory" class="alert alert-warning d-none mb-4 shadow-sm border-0 animate__animated animate__fadeIn"
+                    style="border-left: 5px solid #f59e0b !important; border-radius: 16px;">
+                    <div class="d-flex align-items-center">
+                        <div class="flex-shrink-0">
+                            <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
+                        </div>
+                        <div class="ms-3 flex-grow-1">
+                            <h6 class="alert-heading fw-bold mb-1" style="color: #b45309;">Incomplete Details Warning</h6>
+                            <p id="profileIncompleteBannerText" class="mb-0 small text-dark"></p>
+                        </div>
+                        <div class="ms-3">
+                            <button class="btn btn-sm btn-warning rounded-pill px-3" onclick="showStudentSection('profile')">
+                                <i class="bi bi-person-bounding-box me-1"></i> Update Profile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Pre-Internship Lock Advisory Banner -->
                 <div id="preInternshipLockAdvisory" class="alert alert-warning d-none mb-4 shadow-sm border-0"
                     style="border-left: 5px solid #f59e0b !important; border-radius: 16px;">
@@ -5105,6 +5143,9 @@
                     <button type="button" class="btn btn-warning px-4" onclick="goToUploadSection()">
                         <i class="bi bi-cloud-upload me-2"></i> Go to Upload Section
                     </button>
+                    <button type="button" class="btn btn-outline-secondary px-3 ms-2" onclick="bootstrapModals.documentUploadReminderModal.hide()">
+                        Explore Restricted Portal
+                    </button>
                 </div>
             </div>
         </div>
@@ -6281,7 +6322,7 @@
 
                 // Check for missing documents
                 const docs = student.documents || {};
-                const isMissing = !docs.bonafide || !docs.collegeId;
+                const isMissing = !docs.bonafide || !docs.declaration || !docs.collegeId;
                 const warningDiv = document.getElementById('missingDocsWarning');
                 const completeDiv = document.getElementById('completedProfileMsg');
                 if (warningDiv && completeDiv) {
@@ -6446,6 +6487,7 @@
             const docs = student.documents || {};
             const requiredDocsUploaded = docs.bonafide && docs.declaration && docs.collegeId;
             console.log("Docs Status - Bonafide:", docs.bonafide, "Declaration:", docs.declaration, "ID:", docs.collegeId, "ALL OK:", requiredDocsUploaded);
+            window.requiredDocsUploaded = requiredDocsUploaded; // Store globally for edit check
             const permissions = student.permissions || { attendance: false, diary: false };
 
             const today = new Date();
@@ -6455,6 +6497,12 @@
 
             const internEnd = student.endDate ? new Date(student.endDate) : null;
             if (internEnd) internEnd.setHours(0, 0, 0, 0);
+
+            // Hide new advisory banners by default
+            const docLockBanner = document.getElementById('documentLockAdvisory');
+            if (docLockBanner) docLockBanner.classList.add('d-none');
+            const profileIncompleteBanner = document.getElementById('profileIncompleteAdvisory');
+            if (profileIncompleteBanner) profileIncompleteBanner.classList.add('d-none');
 
             // 0. Initial Reset & Identity Lock
             document.querySelectorAll('.nav-link-custom').forEach(link => {
@@ -6578,8 +6626,9 @@
                 return;
             }
 
-            // 2. DOCUMENT CHECK FOR APPROVED STUDENTS
-            if (status === 'approved') {
+            // 2. DOCUMENT CHECK FOR ACTIVE/APPROVED/ASSIGNED STUDENTS
+            const isActiveOrApproved = ['approved', 'active', 'assigned'].includes(status);
+            if (isActiveOrApproved) {
                 if (!requiredDocsUploaded) {
                     const missing = [];
                     if (!docs.bonafide) missing.push("Bonafide Letter");
@@ -6591,15 +6640,26 @@
                         modalText.innerHTML = `You need to upload your: <strong>${missing.join(', ')}</strong>.`;
                     }
 
-                    // Force Upload Section
+                    // Show reminder modal
                     if (navUpload) navUpload.classList.remove('d-none');
                     bootstrapModals.documentUploadReminderModal.show();
 
+                    // Show Lock Banner
+                    if (docLockBanner) {
+                        docLockBanner.classList.remove('d-none');
+                        const listSpan = document.getElementById('missingDocsBannerText');
+                        if (listSpan) {
+                            listSpan.innerHTML = missing.join(', ');
+                        }
+                    }
+
                     document.querySelectorAll('.nav-link-custom').forEach(link => {
                         const onclick = link.getAttribute('onclick') || "";
-                        // Allow profile and reports even if docs missing? User mentioned "enable your internship portal access", 
-                        // but usually profile is needed to see info. I'll allow uploadDocuments, profile, reports, settings (as per current code).
-                        if (!onclick.includes('uploadDocuments') && !onclick.includes('profile') && !onclick.includes('reports') && !onclick.includes('settings')) {
+                        // Allowed tabs: profile, notices, filemanager, projects, uploaddocuments, applicationform, settings, refresh, logout, whatsapp, mail
+                        const allowedKeys = ['profile', 'notices', 'filemanager', 'projects', 'uploaddocuments', 'applicationform', 'settings', 'refresh', 'logout', 'whatsapp', 'mail'];
+                        const isAllowed = allowedKeys.some(key => onclick.toLowerCase().includes(key));
+
+                        if (!isAllowed) {
                             link.classList.add('disabled-nav-item');
                             link.style.pointerEvents = 'none';
                             link.style.opacity = '0.5';
@@ -6613,8 +6673,35 @@
                             }
                         }
                     });
-                    showStudentSection('uploadDocuments');
+
+                    // Redirect if on restricted tab
+                    const restrictedForMissingDocs = ['tasks', 'diary', 'attendance', 'requests', 'schedule', 'certificates', 'batchChat'];
+                    if (restrictedForMissingDocs.includes(currentActiveStudentSectionId) || currentActiveStudentSectionId === 'dashboard') {
+                        showStudentSection('profile');
+                    }
                     return;
+                } else {
+                    // Check profile details completeness if documents are fully uploaded
+                    const isProfileIncomplete = !student.registerNumber && !student.RegisterNumber && !student.rollNumber && !student.RollNumber && !student.collegeRollNo;
+                    const isCgpaIncomplete = !student.cgpa && !student.CGPA && !student.GPA;
+                    const isDeptIncomplete = !student.department && !student.Department && !student.dept && !student.Dept;
+                    const isBatchIncomplete = !student.batchId && !student.BatchId && !student.assignedBatchLine && !student.batchAssignment;
+
+                    if (isProfileIncomplete || isCgpaIncomplete || isDeptIncomplete || isBatchIncomplete) {
+                        if (profileIncompleteBanner) {
+                            profileIncompleteBanner.classList.remove('d-none');
+                            let warningMsg = "Your profile details are incomplete (missing: ";
+                            const missingFields = [];
+                            if (isProfileIncomplete) missingFields.push("Roll/Register Number");
+                            if (isCgpaIncomplete) missingFields.push("CGPA/GPA");
+                            if (isDeptIncomplete) missingFields.push("Department");
+                            if (isBatchIncomplete) missingFields.push("Project Batch Assignment");
+                            warningMsg += missingFields.join(', ') + "). Please update your details in My Profile.";
+
+                            const incompleteText = document.getElementById('profileIncompleteBannerText');
+                            if (incompleteText) incompleteText.innerText = warningMsg;
+                        }
+                    }
                 }
             }
 
@@ -7086,12 +7173,16 @@
                             
                             ${!isPastDue ? `
                             <div class="submission-actions">
-                                <button class="btn btn-action-sm btn-edit-submission" onclick="toggleEditSubmission('task', '${task.id}')">
-                                    <i class="bi bi-pencil-square"></i> Edit
-                                </button>
-                                <button class="btn btn-action-sm btn-delete-submission" onclick="handleDeleteSubmission('${task.id}', 'Task')">
-                                    <i class="bi bi-trash3"></i> Delete
-                                </button>
+                                ${window.requiredDocsUploaded ? `
+                                    <button class="btn btn-action-sm btn-edit-submission" onclick="toggleEditSubmission('task', '${task.id}')">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </button>
+                                    <button class="btn btn-action-sm btn-delete-submission" onclick="handleDeleteSubmission('${task.id}', 'Task')">
+                                        <i class="bi bi-trash3"></i> Delete
+                                    </button>
+                                ` : `
+                                    <span class="text-muted small"><i class="bi bi-lock-fill"></i> Upload documents to edit/delete</span>
+                                `}
                             </div>` : ''}
                         </div>`;
                     }
@@ -7134,17 +7225,23 @@
                     ${(!isSubmitted && !isPastGrace) ? `
                     <div class="submission-form p-3 bg-light rounded-3" id="submission-form-task-${task.id}">
                         <h6 class="mb-2 fs-6 fw-bold"><i class="bi bi-send-plus me-2"></i>New Submission</h6>
-                        <div class="mb-2">
-                            <textarea class="form-control form-control-sm" id="task-notes-${task.id}" rows="1" placeholder="Add submission notes (optional)..."></textarea>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                            <div class="flex-grow-1">
-                                <input type="file" class="form-control form-control-sm" id="task-file-${task.id}">
+                        ${!window.requiredDocsUploaded ? `
+                            <div class="alert alert-warning py-2 px-3 mb-0 fs-7">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i> Please upload all required documents to submit tasks.
                             </div>
-                            <button class="btn btn-sm btn-primary px-3 fw-bold" onclick="submitTask('${task.id}')">
-                                <i class="bi bi-cloud-upload me-1"></i> Submit
-                            </button>
-                        </div>
+                        ` : `
+                            <div class="mb-2">
+                                <textarea class="form-control form-control-sm" id="task-notes-${task.id}" rows="1" placeholder="Add submission notes (optional)..."></textarea>
+                            </div>
+                            <div class="d-flex gap-2 align-items-center">
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control form-control-sm" id="task-file-${task.id}">
+                                </div>
+                                <button class="btn btn-sm btn-primary px-3 fw-bold" onclick="submitTask('${task.id}')">
+                                    <i class="bi bi-cloud-upload me-1"></i> Submit
+                                </button>
+                            </div>
+                        `}
                     </div>` : ''}
 
                     <div class="submission-form p-3 bg-light rounded-3 d-none" id="edit-form-task-${task.id}">
@@ -7170,6 +7267,10 @@
         }
 
         function submitTask(taskId, isEdit = false) {
+            if (!window.requiredDocsUploaded) {
+                showErrorModal('Access Denied: You must upload all mandatory documents to submit or edit tasks.');
+                return;
+            }
             const notesInput = document.getElementById(isEdit ? `task-notes-edit-${taskId}` : `task-notes-${taskId}`);
             const fileInput = document.getElementById(isEdit ? `task-file-edit-${taskId}` : `task-file-${taskId}`);
             const notes = notesInput?.value || '';
@@ -7291,12 +7392,16 @@
                             
                             ${!isPastDue ? `
                             <div class="submission-actions">
-                                <button class="btn btn-action-sm btn-edit-submission" onclick="toggleEditSubmission('project', '${project.id}')">
-                                    <i class="bi bi-pencil-square"></i> Edit
-                                </button>
-                                <button class="btn btn-action-sm btn-delete-submission" onclick="handleDeleteSubmission('${project.id}', 'Project')">
-                                    <i class="bi bi-trash3"></i> Delete
-                                </button>
+                                ${window.requiredDocsUploaded ? `
+                                    <button class="btn btn-action-sm btn-edit-submission" onclick="toggleEditSubmission('project', '${project.id}')">
+                                        <i class="bi bi-pencil-square"></i> Edit
+                                    </button>
+                                    <button class="btn btn-action-sm btn-delete-submission" onclick="handleDeleteSubmission('${project.id}', 'Project')">
+                                        <i class="bi bi-trash3"></i> Delete
+                                    </button>
+                                ` : `
+                                    <span class="text-muted small"><i class="bi bi-lock-fill"></i> Upload documents to edit/delete</span>
+                                `}
                             </div>` : ''}
                         </div>`;
                     }
@@ -7339,17 +7444,23 @@
                     ${(!isSubmitted && !isPastGrace) ? `
                     <div class="submission-form p-3 bg-light rounded-3" id="submission-form-project-${project.id}">
                         <h6 class="mb-2 fs-6 fw-bold"><i class="bi bi-folder-symlink me-2"></i>Final Submission</h6>
-                        <div class="mb-2">
-                            <textarea class="form-control form-control-sm" id="project-notes-${project.id}" rows="1" placeholder="Project documentation links / notes..."></textarea>
-                        </div>
-                        <div class="d-flex gap-2 align-items-center">
-                            <div class="flex-grow-1">
-                                <input type="file" class="form-control form-control-sm" id="project-file-${project.id}">
+                        ${!window.requiredDocsUploaded ? `
+                            <div class="alert alert-warning py-2 px-3 mb-0 fs-7">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i> Please upload all required documents to enable project submission.
                             </div>
-                            <button class="btn btn-sm btn-info text-white px-3 fw-bold" onclick="submitProject('${project.id}')">
-                                <i class="bi bi-check2-circle me-1"></i> Submit Project
-                            </button>
-                        </div>
+                        ` : `
+                            <div class="mb-2">
+                                <textarea class="form-control form-control-sm" id="project-notes-${project.id}" rows="1" placeholder="Project documentation links / notes..."></textarea>
+                            </div>
+                            <div class="d-flex gap-2 align-items-center">
+                                <div class="flex-grow-1">
+                                    <input type="file" class="form-control form-control-sm" id="project-file-${project.id}">
+                                </div>
+                                <button class="btn btn-sm btn-info text-white px-3 fw-bold" onclick="submitProject('${project.id}')">
+                                    <i class="bi bi-check2-circle me-1"></i> Submit Project
+                                </button>
+                            </div>
+                        `}
                     </div>` : ''}
 
                     <div class="submission-form p-3 bg-light rounded-3 d-none" id="edit-form-project-${project.id}">
@@ -7375,6 +7486,10 @@
         }
 
         function submitProject(projectId, isEdit = false) {
+            if (!window.requiredDocsUploaded) {
+                showErrorModal('Access Denied: You must upload all mandatory documents to submit or edit projects.');
+                return;
+            }
             const notesInput = document.getElementById(isEdit ? `project-notes-edit-${projectId}` : `project-notes-${projectId}`);
             const fileInput = document.getElementById(isEdit ? `project-file-edit-${projectId}` : `project-file-${projectId}`);
             const notes = notesInput?.value || '';

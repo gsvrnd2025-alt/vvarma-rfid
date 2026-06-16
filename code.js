@@ -177,8 +177,12 @@ function getSystemFolder(type) {
     Logger.log(`Created new system folder '${name}' with ID: ${newId}. Saved to settings.`);
     return newFolder;
   } catch (e) {
-    Logger.log(`Critical: Failed to create folder '${name}': ${e.toString()}`);
-    throw e;
+    Logger.log(`Critical: Failed to create folder '${name}': ${e.toString()}. Falling back to root.`);
+    try {
+      return DriveApp.getRootFolder();
+    } catch (rootError) {
+      throw e;
+    }
   }
 }
 
@@ -190,16 +194,21 @@ function getSystemFolderId(type) {
   try {
     return getSystemFolder(type).getId();
   } catch (e) {
-    Logger.log(`Failed to resolve system folder ID for ${type}: ${e.toString()}`);
-    const defaults = {
-      'generated': DEFAULT_CERTIFICATES_FOLDER_ID,
-      'uploads': DEFAULT_UPLOADS_FOLDER_ID,
-      'chat': DEFAULT_CHAT_FOLDER_ID,
-      'reports': DEFAULT_REPORTS_FOLDER_ID,
-      'documents': DEFAULT_DOCUMENTS_FOLDER_ID,
-      'batches': DEFAULT_BATCHES_FOLDER_ID
-    };
-    return defaults[type];
+    Logger.log(`Failed to resolve system folder ID for ${type}: ${e.toString()}. Falling back to root.`);
+    try {
+      return DriveApp.getRootFolder().getId();
+    } catch (rootError) {
+      Logger.log(`Critical: Failed to resolve root folder ID: ${rootError.toString()}`);
+      const defaults = {
+        'generated': DEFAULT_CERTIFICATES_FOLDER_ID,
+        'uploads': DEFAULT_UPLOADS_FOLDER_ID,
+        'chat': DEFAULT_CHAT_FOLDER_ID,
+        'reports': DEFAULT_REPORTS_FOLDER_ID,
+        'documents': DEFAULT_DOCUMENTS_FOLDER_ID,
+        'batches': DEFAULT_BATCHES_FOLDER_ID
+      };
+      return defaults[type];
+    }
   }
 }
 const ADMIN_EMAIL_ID = 'gsveeip2026@gmail.com';
@@ -347,6 +356,17 @@ function saveSwitchStatus(key, state) {
 
 
 function doGet(e) {
+  if (e && e.parameter && e.parameter.action === 'get_firmware_version') {
+    const settingsResult = getAppSettings();
+    const settings = (settingsResult && settingsResult.status === 'success') ? settingsResult.settings : {};
+    const latestVersion = settings.LATEST_FIRMWARE_VERSION || 'v7.0.1-ELITE';
+    const downloadUrl = settings.FIRMWARE_DOWNLOAD_URL || '';
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'success',
+      version: latestVersion,
+      downloadUrl: downloadUrl
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   if (e && e.parameter && e.parameter.action === 'dump_debug_reg_id') {
     const sheet = getSheet(SHEET_NAMES.REGISTRATIONS);
     const objects = getSheetDataAsObjects(sheet);
@@ -16435,6 +16455,11 @@ function uploadStudentFile(regId, base64Data, fileName) {
 
     const studentFolder = getOrCreateStudentFolder(regId, subType);
     const file = studentFolder.createFile(blob);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (sharingError) {
+      Logger.log(`Warning: Failed to set public sharing on uploaded file ${file.getId()}: ${sharingError.toString()}`);
+    }
     const fileUrl = file.getUrl();
     const fileId = file.getId();
     const fileSize = file.getSize();
@@ -19861,6 +19886,27 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
       };
     }
 
+    // Check if student has uploaded mandatory documents
+    const bonafideUrl = student.BonafideUrl || student.bonafideUrl || student.BonafideURL || '';
+    const declarationUrl = student.DeclarationUrl || student.declarationUrl || student.DeclarationURL || '';
+    const collegeIdUrl = student.CollegeIdUrl || student.collegeIdUrl || student.CollegeIdURL || '';
+    const docsUploaded = bonafideUrl && declarationUrl && collegeIdUrl;
+
+    if (!docsUploaded) {
+      logDeviceEvent(deviceMac, 'RFID_Scan_Fail', `Student: ${studentName} (${regId}) - Portal Inactive (Missing Documents)`);
+      logDeniedAttendance(regId, studentName, 'Portal Inactive', deviceMac);
+      return { 
+        status: 'error', 
+        name: studentName, 
+        regId: regId,
+        college: collegeName,
+        slotTiming: slotTimingStr,
+        batch: batchId,
+        message: 'Portal Inactive',
+        detailStatus: 'Portal Inactive'
+      };
+    }
+
     // 1.5. Check if internship has started
     if (student.InternshipStartDate) {
       const startDate = new Date(student.InternshipStartDate);
@@ -21790,7 +21836,7 @@ function getStudentApplicationFormPdf(registrationId) {
     if (!studentData) return { status: 'error', message: 'Student data not found.' };
 
     // 1. Generate the base document (Doc copy)
-    const templateId = TEMPLATE_IDS.APPLICATION_FORM;
+    const templateId = getTemplateIdForDocType('applicationForm');
     const templateFile = DriveApp.getFileById(templateId);
     const tempFolderId = getSystemFolderId('generated');
     const tempFolder = DriveApp.getFolderById(tempFolderId);
