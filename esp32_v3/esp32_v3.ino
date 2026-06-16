@@ -44,7 +44,7 @@
 #endif
 
 // ==================== CONFIGURATION ====================
-#define FIRMWARE_VERSION "v7.0.1-ELITE"
+#define FIRMWARE_VERSION "v7.0.3-ELITE"
 #define DEVICE_NAME "vvarma-rfid"
 #define AP_SSID "VARMA RFID SYSTEM"
 #define AP_PASS "GSVRF001"
