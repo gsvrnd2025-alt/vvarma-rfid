@@ -2276,11 +2276,35 @@ FirmwareDetails fetchOnlineFirmwareDetails() {
 bool performOtaUpdate(String downloadUrl) {
   if (downloadUrl == "") return false;
   
+  lcdLock();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("UPDATING FW...  ");
+  lcd.setCursor(0, 1);
+  lcd.print("Please Wait...  ");
+  lcdUnlock();
+  
   WiFiClientSecure client;
   client.setInsecure();
   
   httpUpdate.onProgress([](int cur, int total) {
-    Serial.printf("OTA Progress: %d%%\r\n", (cur * 100) / total);
+    int pct = (total > 0) ? ((cur * 100) / total) : 0;
+    Serial.printf("OTA Progress: %d%%\r\n", pct);
+    
+    static int dotsCount = 0;
+    dotsCount = (dotsCount + 1) % 4;
+    String dots = "";
+    for (int i = 0; i < dotsCount; i++) dots += ".";
+    while (dots.length() < 3) dots += " ";
+    
+    lcdLock();
+    lcd.setCursor(0, 0);
+    lcd.print("UPDATING FW...  ");
+    lcd.setCursor(0, 1);
+    char buf[17];
+    snprintf(buf, sizeof(buf), "Pls Wait%s %3d%%", dots.c_str(), pct);
+    lcd.print(buf);
+    lcdUnlock();
   });
   
   t_httpUpdate_return ret = httpUpdate.update(client, downloadUrl);
