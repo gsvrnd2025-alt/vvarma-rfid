@@ -143,7 +143,7 @@ volatile bool hasInternet = false;
 volatile bool deviceVerified = false;
 bool timeSynced = false;
 String savedSSID = "", savedPass = "", scriptId = "";
-String otaSource = "gdrive", otaLink = "https://raw.githubusercontent.com/gsv-electricals/rfid-firmware/main/version.json", otaId = "";
+String otaSource = "gdrive", otaLink = "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/version.json", otaId = "";
 String deviceUser = "", devicePass = ""; // ⭐️ ADDED: Mandatory Auth
 String localIpStr = "0.0.0.0", myMac = "";
 volatile SyncStatus currentSyncStatus = SYNC_INITIAL;
@@ -379,7 +379,7 @@ void setup() {
     scriptId = ""; // No default, force portal config
   }
   otaSource = preferences.getString("otaSource", "gdrive");
-  otaLink = preferences.getString("otaLink", "https://raw.githubusercontent.com/gsv-electricals/rfid-firmware/main/version.json");
+  otaLink = preferences.getString("otaLink", "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/version.json");
   otaId = preferences.getString("otaId", "");
   deviceUser = preferences.getString("devUser", "admin");
   devicePass = preferences.getString("devPass", "password123");
