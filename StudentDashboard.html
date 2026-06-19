@@ -6,6 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>v@510 - Student Dashboard</title>
     <style>
+        /* Thin elegant scrollbars globally */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.7);
+        }
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+        }
         /* GRID SYSTEM FOR ALL SCREENS (v@510) */
         #mobileGridButtonsContainer {
             display: grid !important;
@@ -128,12 +147,28 @@
             --gray-color: #6c757d;
             --border-color: #edf2f7;
             --border-radius: 16px;
-            --header-height: 85px;
-            --sidebar-width: 280px;
+            --header-height: 65px;
+            --sidebar-width: 240px;
             --box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
             --gradient-primary: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
             --glass-bg: rgba(255, 255, 255, 0.85);
             --glass-border: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Tactile Click/Active Feedback for Buttons, Switches, and Interactive Elements */
+        button, .btn, .action-btn, .nav-link-custom, .sidebar-nav a, .form-check-input, .form-switch, [role="button"], .clickable-badge {
+            transition: all 0.15s ease-in-out;
+        }
+        button:active, .btn:active, .action-btn:active, [role="button"]:active {
+            transform: scale(0.96) !important;
+            filter: brightness(0.9) !important;
+        }
+        .form-check-input:active {
+            transform: scale(0.9) !important;
+        }
+        .nav-link-custom:active, .sidebar-nav a:active {
+            transform: scale(0.98) !important;
+            background-color: rgba(0, 0, 0, 0.05) !important;
         }
 
         /* Custom Scrollbar */
@@ -1325,10 +1360,22 @@
             padding: 2.5rem;
             min-height: calc(100vh - var(--header-height));
             margin-top: var(--header-height);
-            transition: all 0.3s ease;
+            transition: margin-left 0.3s ease, width 0.3s ease, min-width 0.3s ease, all 0.3s ease;
             width: calc(100% - var(--sidebar-width));
             position: relative;
             z-index: 1;
+        }
+
+        /* Desktop Collapsed Sidebar Styles */
+        @media (min-width: 992px) {
+            body.sidebar-collapsed .dashboard-nav {
+                transform: translateX(-100%) !important;
+            }
+            body.sidebar-collapsed .dashboard-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+                min-width: 100% !important;
+            }
         }
 
         @media (max-width: 992px) {
@@ -2884,7 +2931,7 @@
 
         /* Mobile Menu Button */
         .mobile-menu-btn {
-            display: none;
+            display: flex !important;
             background: none;
             border: none;
             color: white;
@@ -3289,8 +3336,8 @@
             <div class="header-content d-flex align-items-center justify-content-start gap-2 flex-nowrap"
                 style="padding: 0 10px;">
                 <div class="d-flex align-items-center gap-1 flex-nowrap">
-                    <button
-                        class="mobile-menu-btn d-lg-none d-flex align-items-center justify-content-center text-white"
+                    <button id="sidebarToggle"
+                        class="mobile-menu-btn d-flex align-items-center justify-content-center text-white"
                         style="min-width: 48px; height: 48px; background: rgba(255,255,255,0.1); border-radius: 12px; border: none; cursor: pointer;">
                         <i class="bi bi-list" style="font-size: 1.8rem;"></i>
                     </button>
@@ -6683,18 +6730,26 @@
                     }
                 }
 
-                // AUTO-GRACE: Within 7 days after internship end, keep Attendance & Diary unlocked
-                const autoGraceEnd = internEnd ? new Date(internEnd) : null;
-                if (autoGraceEnd) autoGraceEnd.setDate(autoGraceEnd.getDate() + 7);
-                const isInAutoGrace = autoGraceEnd && today <= autoGraceEnd;
+                const isWithinInternship = internStart && internEnd && today >= new Date(internStart) && today <= new Date(internEnd);
 
                 // Restriction Mode
                 document.querySelectorAll('.nav-link-custom').forEach(link => {
                     const onclick = link.getAttribute('onclick') || "";
                     // Always allow profile, file manager, admin, mail, whatsapp, reports
                     const alwaysAllowed = ['profile', 'fileManager', 'admin', 'mailAdmin', 'whatsapp', 'reports'].some(key => onclick.includes(key));
-                    // During auto-grace period also allow attendance and diary
-                    const graceAllowed = isInAutoGrace && ['attendance', 'diary'].some(key => onclick.includes(key));
+                    
+                    let graceAllowed = false;
+                    const isAttendanceTab = onclick.includes('attendance');
+                    const isDiaryTab = onclick.includes('diary');
+                    
+                    if (isWithinInternship) {
+                        if (isAttendanceTab && permissions.attendance) graceAllowed = true;
+                        if (isDiaryTab && permissions.diary) graceAllowed = true;
+                    } else {
+                        // After internship: only allowed if they have an approved active grace period (mapped in permissions)
+                        if (isAttendanceTab && permissions.attendance) graceAllowed = true;
+                        if (isDiaryTab && permissions.diary) graceAllowed = true;
+                    }
 
                     if (!alwaysAllowed && !graceAllowed) {
                         link.classList.add('disabled-nav-item');
@@ -6703,7 +6758,7 @@
                     }
                 });
 
-                if (!isInAutoGrace) {
+                if (!isWithinInternship) {
                     showStudentSection('profile');
                 }
                 return;
@@ -6739,8 +6794,8 @@
                     document.querySelectorAll('.nav-link-custom').forEach(link => {
                         const onclick = link.getAttribute('onclick') || "";
                         // Allowed tabs: profile, notices, filemanager, projects, uploaddocuments, applicationform, settings, refresh, logout, whatsapp, mail
-                        const allowedKeys = ['profile', 'notices', 'filemanager', 'projects', 'uploaddocuments', 'applicationform', 'settings', 'refresh', 'logout', 'whatsapp', 'mail'];
-                        const isAllowed = allowedKeys.some(key => onclick.toLowerCase().includes(key));
+                        const allowedKeys = ['profile', 'notices', 'filemanager', 'projects', 'uploaddocuments', 'applicationform', 'settings', 'refresh', 'logout', 'whatsapp', 'mail', 'uploadDocuments'];
+                        const isAllowed = allowedKeys.some(key => onclick.toLowerCase().includes(key.toLowerCase()));
 
                         if (!isAllowed) {
                             link.classList.add('disabled-nav-item');
@@ -6754,13 +6809,18 @@
                                 lockIcon.style.fontSize = '0.7rem';
                                 link.appendChild(lockIcon);
                             }
+                        } else {
+                            // Make sure allowed tabs are always clickable
+                            link.classList.remove('disabled-nav-item');
+                            link.style.pointerEvents = 'auto';
+                            link.style.opacity = '1';
                         }
                     });
 
-                    // Redirect if on restricted tab
+                    // Redirect if on restricted tab — go to uploadDocuments so they can complete profile
                     const restrictedForMissingDocs = ['tasks', 'diary', 'attendance', 'requests', 'schedule', 'certificates', 'batchChat'];
                     if (restrictedForMissingDocs.includes(currentActiveStudentSectionId) || currentActiveStudentSectionId === 'dashboard') {
-                        showStudentSection('profile');
+                        showStudentSection('uploadDocuments');
                     }
                     return;
                 } else {
@@ -6768,7 +6828,7 @@
                     const isProfileIncomplete = !student.registerNumber && !student.RegisterNumber && !student.rollNumber && !student.RollNumber && !student.collegeRollNo;
                     const isCgpaIncomplete = !student.cgpa && !student.CGPA && !student.GPA;
                     const isDeptIncomplete = !student.department && !student.Department && !student.dept && !student.Dept;
-                    const isBatchIncomplete = !student.batchId && !student.BatchId && !student.assignedBatchLine && !student.batchAssignment;
+                    const isBatchIncomplete = !student.batch && !student.batchId && !student.BatchId && !student.assignedBatchLine && !student.batchAssignment;
 
                     if (isProfileIncomplete || isCgpaIncomplete || isDeptIncomplete || isBatchIncomplete) {
                         if (profileIncompleteBanner) {
@@ -6810,18 +6870,9 @@
                         } else if (today >= internStart && today <= internEnd) {
                             canAccess = true;
                         } else {
-                            // Post-internship: Automatic 7-day grace window
-                            const autoGraceEnd = new Date(internEnd);
-                            autoGraceEnd.setDate(autoGraceEnd.getDate() + 7);
-                            if (today <= autoGraceEnd) {
-                                // Within 7-day automatic grace - full access, no request needed
-                                canAccess = true;
-                                showRequest = false;
-                            } else {
-                                // Beyond auto-grace: check explicit permissions
-                                canAccess = permissions[mod.id === 'attendance' ? 'attendance' : 'diary'];
-                                showRequest = !canAccess;
-                            }
+                            // Beyond internship end date: must check explicit approved grace period permissions (no automatic grace window)
+                            canAccess = permissions[mod.id === 'attendance' ? 'attendance' : 'diary'];
+                            showRequest = !canAccess;
                         }
 
                         if (!canAccess) {
@@ -8250,9 +8301,29 @@
 
                 const startDateStr = loggedInStudentData.startDate || loggedInStudentData.internshipStartDate || loggedInStudentData.InternshipStartDate || '2000-01-01';
                 const endDateStr = loggedInStudentData.endDate || loggedInStudentData.internshipEndDate || loggedInStudentData.InternshipEndDate || '2099-12-31';
+                
+                const startGrace = parseInt(loggedInStudentData.startGraceDays || 0);
+                const endGrace = parseInt(loggedInStudentData.endGraceDays || 60);
 
-                let minDate = startDateStr;
-                let maxDate = endDateStr;
+                let startDate = new Date(startDateStr);
+                if (!isNaN(startDate.getTime())) {
+                    startDate.setDate(startDate.getDate() - startGrace);
+                } else {
+                    startDate = new Date('2000-01-01');
+                }
+                let endDate = new Date(endDateStr);
+                if (!isNaN(endDate.getTime())) {
+                    endDate.setDate(endDate.getDate() + endGrace);
+                } else {
+                    endDate = new Date('2099-12-31');
+                }
+
+                const getLocalISODate = (d) => {
+                    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+                };
+
+                let minDate = getLocalISODate(startDate);
+                let maxDate = getLocalISODate(endDate);
 
                 // RULES BASED ON REQUEST TYPE
                 if (defaultType === 'Check-out Early' || defaultType === 'Check-in Manual') {
@@ -9606,7 +9677,6 @@
         function prefillCorrection(dateISO) {
             openAttendanceRequestModal(dateISO, 'Correction');
         }
-
         function restrictAttendanceDatePickers(student) {
             const startStr = student.startDate || student.internshipStartDate || student.InternshipStartDate;
             const endStr = student.endDate || student.internshipEndDate || student.InternshipEndDate;
@@ -9615,6 +9685,9 @@
                 console.warn("Internship boundaries missing. Cannot restrict date pickers.");
                 return;
             }
+
+            const startGrace = parseInt(student.startGraceDays || 0);
+            const endGrace = parseInt(student.endGraceDays || 60);
 
             // Ensure YYYY-MM-DD format for HTML date inputs
             const formatDateForInput = (dateInput) => {
@@ -9630,9 +9703,14 @@
                 return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
             };
 
-            const minDate = formatDateForInput(startStr);
-            const maxDate = formatDateForInput(endStr);
+            // Calculate adjusted dates
+            let startDate = new Date(startStr);
+            startDate.setDate(startDate.getDate() - startGrace);
+            let endDate = new Date(endStr);
+            endDate.setDate(endDate.getDate() + endGrace);
 
+            const minDate = formatDateForInput(startDate);
+            const maxDate = formatDateForInput(endDate);
             // Universal list of date inputs to apply boundaries
             const dateInputs = [
                 'correctionDate', 'requestDate', 'leaveStartDate', 'leaveEndDate',
@@ -12949,7 +13027,13 @@
 
     <script>
         function gsvToggleMobileMenu() {
-            document.body.classList.toggle("sidebar-open");
+            if (window.innerWidth <= 991) {
+                document.body.classList.toggle("sidebar-open");
+                document.body.classList.remove("sidebar-collapsed");
+            } else {
+                document.body.classList.toggle("sidebar-collapsed");
+                document.body.classList.remove("sidebar-open");
+            }
         }
 
         function initMobileSidebar() {

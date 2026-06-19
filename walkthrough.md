@@ -379,3 +379,47 @@ We have successfully implemented student compliance locks, welcome note warning 
   ```
   - **Result**: `Sketch uses 1315327 bytes (66%) of program storage space. Maximum is 1966080 bytes.`
 
+---
+
+# Walkthrough: Assigned Status Login & Document Checklist Harmonization
+
+We have successfully resolved login restrictions for students with status `"Assigned"`, harmonized the mandatory document verification checklists, and resolved dashboard warnings for active, assigned batch students.
+
+## Changes Made
+
+### 1. Google Apps Script Backend (`code.js`)
+- **Fallback Login Lookup**: Enhanced `studentLogin()` to perform a fallback search in the `Consolidated Internships` sheet if the student is not found in the `Registrations` sheet, ensuring that students who are categorized in other sheets can still log in successfully.
+- **Harmonized Document Checklist**: Updated `getStudentFiles()` to define `mandatoryTypes` as `["Bonafide", "Declaration", "College ID"]` (removing `"Other Doc"`). This ensures the Admin Dashboard's completeness indicator matches the 3 documents strictly required for active status and RFID checks.
+- **Cleaned Up Debug Endpoints**: Completely removed temporary, unauthenticated debug hooks (`dump_assigned`, `dump_debug_reg_id`, `find_student`) from the `doGet(e)` router and parameter action whitelist to restore production security.
+
+### 2. Student Portal Front-End (`StudentDashboard.html`)
+- **Assigned Batch Incompleteness Flag Fix**: Fixed `isBatchIncomplete` validation in `enforceAccessRestrictions()` to check `!student.batch` along with `batchId` properties. This resolves the bug where students assigned to a batch were still shown the "Incomplete profile details (missing: Project Batch Assignment)" warning banner.
+
+---
+
+## Verification Results
+
+### 1. Automated Login Tests
+- Created and executed a node validation script (`test_logins.js`) that invoked the `studentLogin` POST API for all 12 `"Assigned"` students.
+- **Outcome**: All 12 login requests succeeded, confirming status whitelist logic and credentials validation are fully operational:
+  - `V N TUSHAR` — Success
+  - `VAIRABAVANI K M` — Success
+  - `JAGADEESH SARAVANAN` — Success
+  - `SAN A` — Success
+  - `SAM KISHORE` — Success
+  - `DHANISHTAA UDHAYAKUMAR` — Success
+  - `ELAIYABHARATHI E` — Success
+  - `ANUSRI K` — Success
+  - `PALANI VM` — Success
+  - `SHARVESH C P` — Success
+  - `PRIYA S` — Success
+  - `PADHMASRI MP` — Success
+
+### 2. Security Check on Debug Routes
+- Attempted to query the web app using `action=dump_assigned`.
+- **Outcome**: The endpoint is fully deactivated, secure, and redirects to the index/login page.
+
+### 3. Apps Script Push & Deploy
+- Successfully pushed the updated files to Google Apps Script via `clasp push`.
+- Deployed script changes as **Version 168** under the active deployment ID (`AKfycbxvPlPHaajzeUdf8JqzPBe_5n7vswC18RPv1N9rwprjf1w6k-4slmE2aCzjDgDRsoIGDw`).
+

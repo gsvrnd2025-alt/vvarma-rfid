@@ -14,7 +14,26 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        *,
+        /* Thin elegant scrollbars globally */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.4);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(156, 163, 175, 0.7);
+        }
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
+            box-sizing: border-box;
+        }
         *::before,
         *::after {
             box-sizing: border-box;
@@ -233,6 +252,71 @@
                 min-width: 100%;
             }
         }
+
+        #sidebarToggle {
+            display: flex !important;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.4rem;
+            padding: 5px;
+            cursor: pointer;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        #sidebarToggle:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .mobile-menu-btn,
+        #menuToggle {
+            display: none !important;
+        }
+
+        /* Transitions for smooth sidebar collapse */
+        .sidebar {
+            left: 0;
+            transition: left 0.3s ease, transform 0.3s ease !important;
+        }
+        .main-content {
+            transition: margin-left 0.3s ease, width 0.3s ease, min-width 0.3s ease !important;
+        }
+        .header {
+            transition: left 0.3s ease, right 0.3s ease !important;
+        }
+
+        /* Desktop Collapsed Sidebar Styles */
+        @media (min-width: 992px) {
+            body.sidebar-collapsed .sidebar {
+                left: -260px !important;
+            }
+            body.sidebar-collapsed .main-content {
+                margin-left: 0 !important;
+                width: 100% !important;
+                min-width: 100% !important;
+            }
+            body.sidebar-collapsed .header {
+                left: 0 !important;
+            }
+        }
+
+        /* Tactile Click/Active Feedback for Buttons, Switches, and Interactive Elements */
+        button, .btn, .action-btn, .nav-link-custom, .sidebar-nav a, .form-check-input, .form-switch, [role="button"], .clickable-badge {
+            transition: all 0.15s ease-in-out;
+        }
+        button:active, .btn:active, .action-btn:active, [role="button"]:active {
+            transform: scale(0.96) !important;
+            filter: brightness(0.9) !important;
+        }
+        .form-check-input:active {
+            transform: scale(0.9) !important;
+        }
+        .nav-link-custom:active, .sidebar-nav a:active {
+            transform: scale(0.98) !important;
+            background-color: rgba(0, 0, 0, 0.05) !important;
+        }
+
 
         .header {
             position: fixed;
@@ -3691,10 +3775,10 @@
         <div class="header">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <button id="sidebarToggle" class="action-btn"
-                    style="background:none; border:none; color: white; font-size: 1.4rem; display: none; padding: 5px;">
+                    style="background:none; border:none; color: white; font-size: 1.4rem; padding: 5px;">
                     <i class="fas fa-bars"></i>
                 </button>
-                <h1 id="dashboardTitle">Admin Dashboard</h1>
+                <h1 id="dashboardTitle">Admin Dashboard <span style="font-size:0.75rem; font-weight:normal; opacity:0.75; vertical-align:middle; margin-left:8px;">v6.9.0</span></h1>
             </div>
             <div class="header-right" style="display: flex; align-items: center; gap: 15px;">
                 <!-- Navigation & Page Controls -->
@@ -4189,6 +4273,10 @@
                                 <option value="IoT">IoT</option>
                                 <option value="Software">Software</option>
                             </select>
+                        </div>
+                        <div class="col-md-9">
+                            <label for="newBatchTitle" class="form-label small fw-bold"><i class="fas fa-certificate me-1 text-warning"></i> Certificate Title <span class="text-muted fw-normal">(appears on certificate)</span></label>
+                            <input type="text" class="form-control" id="newBatchTitle" placeholder="e.g. Industrial Internship in Embedded Systems">
                         </div>
                         <div class="col-md-12 mt-2">
                             <label for="newBatchSkill" class="form-label small fw-bold">Skill Learned (For
@@ -6232,6 +6320,16 @@
                                         Default Slot Assignment</label>
                                 </div>
                             </div>
+                            <div class="stylish-input-group">
+                                <label for="settingStartGracePeriod"><i class="fas fa-calendar-plus"></i> Start Grace Period (Days)</label>
+                                <input type="number" id="settingStartGracePeriod" class="stylish-form-control"
+                                    value="0" min="0" placeholder="Days before start date">
+                            </div>
+                            <div class="stylish-input-group">
+                                <label for="settingEndGracePeriod"><i class="fas fa-calendar-minus"></i> End Grace Period (Days)</label>
+                                <input type="number" id="settingEndGracePeriod" class="stylish-form-control"
+                                    value="60" min="0" placeholder="Days after end date">
+                            </div>
                         </div>
 
                         <!-- System Maintenance Section -->
@@ -6366,26 +6464,27 @@
                             </div>
                             <div class="col-md-2">
                                 <div class="form-check form-switch mt-2">
-                                    <input class="form-check-input" type="checkbox" id="slotRfidEnabled" checked
-                                        onchange="document.getElementById('rfidGraceGroup').style.display = this.checked ? 'flex' : 'none'">
+                                    <input class="form-check-input" type="checkbox" id="slotRfidEnabled" checked>
                                     <label class="form-check-label fw-bold" for="slotRfidEnabled">RFID Enforcement
                                         Mode</label>
                                 </div>
                             </div>
-                            <div class="col-md-4" id="rfidGraceGroup" style="display:none;">
+                            <div class="col-md-4" id="rfidGraceGroup" style="display:flex;">
                                 <div class="row w-100">
                                     <div class="col-6">
+                                        <label class="fw-bold small text-muted text-uppercase mb-1" style="font-size:0.7rem;"><i class="fas fa-shield-alt text-info me-1"></i>Grace Late (min)</label>
                                         <div class="input-group input-group-sm">
                                             <span class="input-group-text bg-white">Grace Late</span>
                                             <input type="number" id="slotRfidLateGrace" class="form-control"
-                                                placeholder="Min" title="Grace minutes for late entry">
+                                                placeholder="Min" title="Grace minutes for late entry" min="0">
                                         </div>
                                     </div>
                                     <div class="col-6">
+                                        <label class="fw-bold small text-muted text-uppercase mb-1" style="font-size:0.7rem;"><i class="fas fa-shield-alt text-info me-1"></i>Grace Early (min)</label>
                                         <div class="input-group input-group-sm">
                                             <span class="input-group-text bg-white">Grace Early</span>
                                             <input type="number" id="slotRfidEarlyGrace" class="form-control"
-                                                placeholder="Min" title="Grace minutes for early exit">
+                                                placeholder="Min" title="Grace minutes for early exit" min="0">
                                         </div>
                                     </div>
                                 </div>
@@ -6402,8 +6501,13 @@
                                     <span class="input-group-text bg-light text-muted fw-bold">Days</span>
                                 </div>
                             </div>
-                            <div class="col-md-3 mt-4 mt-md-0 d-flex align-items-end">
-                                <button class="btn w-100 py-2 text-white shadow fw-bolder"
+                            <div class="col-md-3 mt-4 mt-md-0 d-flex align-items-end gap-2">
+                                <button class="btn btn-secondary py-2 shadow fw-bolder text-white"
+                                    style="font-size: 0.95rem; border-radius: 8px; border: none; letter-spacing: 0.5px;"
+                                    onclick="resetSlotConfigForm()" title="Clear form & add new slot">
+                                    <i class="fas fa-plus me-1"></i> Add / Clear
+                                </button>
+                                <button class="btn btn-success flex-grow-1 py-2 text-white shadow fw-bolder"
                                     style="background: linear-gradient(135deg, #10b981 0%, #047857 100%); font-size: 0.95rem; border-radius: 8px; border: none; letter-spacing: 0.5px;"
                                     onclick="saveSlotTimingAdmin()">
                                     <i class="fas fa-paper-plane me-2 fs-5"></i> GO / SAVE
@@ -6438,6 +6542,7 @@
                                         <tr>
                                             <th>Type / Targets</th>
                                             <th>Active Bounds</th>
+                                            <th>Late / Early</th>
                                             <th>RFID Rule</th>
                                             <th class="text-center">Validity</th>
                                             <th class="text-center">Status</th>
@@ -6446,7 +6551,7 @@
                                     </thead>
                                     <tbody id="slotTimingsTableBody">
                                         <tr>
-                                            <td colspan="5" class="text-center py-3 text-muted">Loading
+                                            <td colspan="7" class="text-center py-3 text-muted">Loading
                                                 configurations...</td>
                                         </tr>
                                     </tbody>
@@ -6877,6 +6982,50 @@
             </div>
         </div>
 
+        <!-- ===== Batch Students Quick View Modal ===== -->
+        <div id="batchStudentsQuickViewModal" class="modal" style="z-index: 9100;">
+            <div class="modal-content" style="max-width: 760px; border-radius: 20px; overflow: hidden;">
+                <div class="modal-header" style="background: linear-gradient(135deg, #1e40af, #3b82f6); color: white; padding: 20px 28px; display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <h2 style="color:white; margin:0; font-size:1.2rem;"><i class="fas fa-users me-2"></i> Students in Batch</h2>
+                        <div id="bsqvBatchTitle" style="font-size:0.85rem; color:rgba(255,255,255,0.85); margin-top:4px; font-weight:600;"></div>
+                    </div>
+                    <span class="close-btn" style="color:white; font-size:1.6rem; cursor:pointer;" onclick="closeModal('batchStudentsQuickViewModal')">&times;</span>
+                </div>
+                <div class="modal-body" style="padding: 0;">
+                    <div id="bsqvContent" style="min-height: 200px; max-height: 70vh; overflow-y: auto;">
+                        <div class="d-flex justify-content-center align-items-center p-5">
+                            <div class="spinner-border text-primary"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .bsqv-table { width:100%; border-collapse:collapse; }
+            .bsqv-table thead tr { background:#f1f5f9; }
+            .bsqv-table th { padding: 12px 16px; font-size:0.72rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #e2e8f0; text-align:left; }
+            .bsqv-table td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; vertical-align:middle; }
+            .bsqv-table tr:last-child td { border-bottom:none; }
+            .bsqv-table tr:hover td { background:#f8fafc; }
+            .bsqv-badge { display:inline-flex; align-items:center; gap:4px; font-size:0.68rem; font-weight:700; padding:3px 8px; border-radius:9999px; text-transform:uppercase; }
+            .bsqv-badge-batch { background:#dcfce7; color:#15803d; }
+            .bsqv-badge-card { background:#e0f2fe; color:#0369a1; }
+            .bsqv-badge-nocard { background:#fee2e2; color:#b91c1c; }
+            .bsqv-badge-approved { background:#dbeafe; color:#1d4ed8; }
+            .batch-card-cert-title { font-size:0.75rem; color:#64748b; margin-top:3px; font-weight:500; }
+            .btn-view-students {
+                display:inline-flex; align-items:center; gap:4px;
+                background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+                color: white; border:none; border-radius:8px;
+                padding: 3px 10px; font-size:0.72rem; font-weight:700;
+                cursor:pointer; transition: all 0.2s; white-space:nowrap;
+                box-shadow: 0 2px 6px rgba(59,130,246,0.35);
+            }
+            .btn-view-students:hover { transform:translateY(-1px); box-shadow:0 4px 10px rgba(59,130,246,0.45); }
+        </style>
+
         <!-- Eduit Batch Modal -->
         <!-- Batch Management Modal -->
         <div id="editBatchModal" class="modal">
@@ -7159,6 +7308,11 @@
                                     <label><i class="fas fa-user-tie me-1 text-primary"></i> Industrial Supervisor Name</label>
                                     <input type="text" id="editBatchMentor" class="batch-input"
                                         placeholder="Assigned Industrial Supervisor">
+                                </div>
+                                <div class="batch-form-group" style="grid-column: 1 / -1;">
+                                    <label><i class="fas fa-certificate me-1 text-warning"></i> Certificate Title <span style="font-weight:400; text-transform:none; font-size:0.7rem; color:#94a3b8;">(appears on certificate — shown in bold)</span></label>
+                                    <input type="text" id="editBatchCertTitle" class="batch-input"
+                                        placeholder="e.g. Industrial Internship in Embedded Systems">
                                 </div>
                                 <div class="batch-form-group">
                                     <label><i class="fas fa-project-diagram me-1 text-primary"></i> Focus
@@ -10630,6 +10784,8 @@
                 'CertificateTriggerMode': getChecked('settingCertificateTriggerMode') ? 'Auto' : 'Manual',
                 'DefaultSlotAssignment': getChecked('settingDefaultSlotEnabled') ? 'Auto' : 'Manual',
                 'RFID_Automation_Mode': document.getElementById('rfidAutomationToggle') ? (getChecked('rfidAutomationToggle') ? 'Auto' : 'Manual') : 'Manual',
+                'InternshipStartGracePeriod': getVal('settingStartGracePeriod'),
+                'InternshipEndGracePeriod': getVal('settingEndGracePeriod'),
 
                 // Document Templates & Folders
                 'TPL_OFFER_LETTER': getVal('tplOfferLetter'),
@@ -10729,6 +10885,8 @@
             if (document.getElementById('settingCertificateTriggerMode')) document.getElementById('settingCertificateTriggerMode').checked = isAuto(s['CertificateTriggerMode']);
             if (document.getElementById('settingDefaultSlotEnabled')) document.getElementById('settingDefaultSlotEnabled').checked = isAuto(s['DefaultSlotAssignment']);
             if (document.getElementById('rfidAutomationToggle')) document.getElementById('rfidAutomationToggle').checked = isAuto(s['RFID_Automation_Mode']);
+            if (document.getElementById('settingStartGracePeriod')) document.getElementById('settingStartGracePeriod').value = s['InternshipStartGracePeriod'] || '0';
+            if (document.getElementById('settingEndGracePeriod')) document.getElementById('settingEndGracePeriod').value = s['InternshipEndGracePeriod'] || '60';
 
             // Populate Document Templates & Folders
             const sets = [
@@ -13466,12 +13624,21 @@
 
             html += `<span class="status-badge status-${statusClass}">${displayStatus}</span>`;
 
+            // Show Batch Assigned badge if student has a batch assigned
+            const batchVal = d.Batch || student.Batch || d.batch || student.batch || '';
+            const cleanBatch = String(batchVal).trim();
+            if (cleanBatch && cleanBatch !== 'No Batch' && cleanBatch !== 'N/A' && cleanBatch !== '—') {
+                html += `<br><span class="status-badge" style="background:#e0f2fe !important;color:#0369a1 !important;border:1px solid #bae6fd !important;font-size:0.62rem;margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:2px 5px;font-weight:700;letter-spacing:0.5px;">
+                    <i class="fas fa-layer-group" style="font-size:0.6rem;"></i> Batch Assigned (${cleanBatch})
+                </span>`;
+            }
+
             // Show RFID card badge if student has a card assigned
             const rfidTag = student.rfidTag || d.rfidTag || d.RFID_TagID || '';
             if (rfidTag && String(rfidTag).trim()) {
                 const displayTag = String(rfidTag).trim();
                 html += `<br><span class="status-badge" style="background:#e8f5e9 !important;color:#2e7d32 !important;border:1px solid #a5d6a7 !important;font-size:0.62rem;margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:2px 5px;font-weight:700;letter-spacing:0.5px;">
-                    <i class="fas fa-id-card" style="font-size:0.6rem;"></i> ${displayTag}
+                    <i class="fas fa-id-card" style="font-size:0.6rem;"></i> RFID Card Assigned (${displayTag})
                 </span>`;
             }
 
@@ -14745,10 +14912,15 @@
 
             let html = '<div class="batches-grid">';
             batches.forEach(b => {
+                const escapedTitle = (b.title || '').replace(/'/g, "\\'");
+                const escapedName = (b.name || '').replace(/'/g, "\\'");
                 html += `
                 <div class="batch-card" data-name="${b.name.toLowerCase()}" data-mentor="${b.mentor.toLowerCase()}" data-students="${(b.studentNames || '').toLowerCase()}">
                     <div class="batch-card-header">
-                        <h3>${b.name}</h3>
+                        <div>
+                            <h3>${b.name}</h3>
+                            ${b.title ? `<div class="batch-card-cert-title"><i class="fas fa-certificate me-1" style="color:#f59e0b; font-size:0.7rem;"></i><strong>${b.title}</strong></div>` : ''}
+                        </div>
                         <span class="badge ${b.status === 'Inactive' ? 'bg-secondary' : 'bg-success'} rounded-pill">${b.status || 'Active'}</span>
                     </div>
                     <div class="batch-card-body">
@@ -14770,7 +14942,10 @@
                             <div class="batch-info-icon"><i class="fas fa-users"></i></div>
                             <div class="batch-info-text">
                                 <span class="batch-info-label">Students</span>
-                                <span class="batch-info-value">${b.studentCount} Assigned</span>
+                                <span class="batch-info-value d-flex align-items-center gap-2">
+                                    <span>${b.studentCount} Assigned</span>
+                                    ${b.studentCount > 0 ? `<button class="btn-view-students" onclick="openBatchStudentsQuickView('${escapedName}', '${escapedTitle}')" title="View students in this batch"><i class="fas fa-eye me-1"></i>View</button>` : ''}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -14824,6 +14999,100 @@
             });
         }
 
+        /**
+         * Opens the Batch Students Quick View modal showing all assigned students
+         * with start/end dates, batch assigned, card assigned status badges.
+         */
+        function openBatchStudentsQuickView(batchName, batchTitle) {
+            const content = document.getElementById('bsqvContent');
+            const titleEl = document.getElementById('bsqvBatchTitle');
+
+            if (titleEl) {
+                if (batchTitle) {
+                    titleEl.innerHTML = `<i class="fas fa-certificate me-1"></i>${batchTitle}`;
+                } else {
+                    titleEl.innerHTML = `<i class="fas fa-layer-group me-1"></i>${batchName}`;
+                }
+            }
+
+            if (content) {
+                content.innerHTML = `<div class="d-flex justify-content-center align-items-center p-5"><div class="spinner-border text-primary"></div><span class="ms-3 text-muted">Loading students...</span></div>`;
+            }
+
+            openModal('batchStudentsQuickViewModal');
+
+            google.script.run
+                .withSuccessHandler(res => {
+                    if (!content) return;
+                    if (res.status !== 'success' || !res.students || res.students.length === 0) {
+                        content.innerHTML = `<div class="text-center p-5 text-muted"><i class="fas fa-user-slash fa-3x mb-3 opacity-25"></i><p>No students assigned to this batch yet.</p></div>`;
+                        return;
+                    }
+
+                    let html = `<table class="bsqv-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Student</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                    res.students.forEach((s, idx) => {
+                        const initials = (s.name || '?').split(' ').map(n => n[0] || '').join('').substring(0, 2).toUpperCase();
+                        const rawStatus = String(s.status || '').toLowerCase();
+                        // Treat 'assigned' same as 'approved' — show Approved badge
+                        const isApproved = rawStatus === 'approved' || rawStatus === 'assigned' || rawStatus === 'active';
+                        const statusHtml = isApproved
+                            ? `<span class="bsqv-badge bsqv-badge-approved"><i class="fas fa-check-circle me-1"></i>Approved</span>`
+                            : `<span class="bsqv-badge" style="background:#fef3c7;color:#b45309;">${s.status || 'Unknown'}</span>`;
+
+                        html += `<tr>
+                            <td class="text-muted fw-bold" style="font-size:0.85rem;">${idx + 1}</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div style="width:36px;height:36px;background:#e0e7ff;color:#4338ca;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:0.8rem;flex-shrink:0;">${initials}</div>
+                                    <div>
+                                        <div class="fw-bold text-dark" style="font-size:0.9rem;">${s.name}</div>
+                                        <div class="text-muted" style="font-size:0.75rem;">${s.regId}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td style="font-size:0.82rem; color:#334155; font-weight:600;">${s.startDate || '—'}</td>
+                            <td style="font-size:0.82rem; color:#334155; font-weight:600;">${s.endDate || '—'}</td>
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+                                    <span class="bsqv-badge bsqv-badge-batch"><i class="fas fa-layer-group me-1"></i>Batch Assigned</span>
+                                    ${s.cardAssigned
+                                        ? `<span class="bsqv-badge bsqv-badge-card"><i class="fas fa-id-card me-1"></i>Card Assigned</span>`
+                                        : `<span class="bsqv-badge bsqv-badge-nocard"><i class="fas fa-id-card me-1"></i>No Card</span>`}
+                                    ${statusHtml}
+                                </div>
+                            </td>
+                        </tr>`;
+                    });
+
+                    html += '</tbody></table>';
+
+                    // Summary footer
+                    const cardCount = res.students.filter(s => s.cardAssigned).length;
+                    html += `<div style="background:#f8fafc;padding:12px 16px;border-top:1px solid #e2e8f0;font-size:0.8rem;color:#64748b;display:flex;gap:16px;flex-wrap:wrap;">
+                        <span><i class="fas fa-users me-1 text-primary"></i><strong>${res.students.length}</strong> Total Students</span>
+                        <span><i class="fas fa-id-card me-1 text-info"></i><strong>${cardCount}</strong> Cards Assigned</span>
+                        <span><i class="fas fa-layer-group me-1 text-success"></i>Batch: <strong>${batchName}</strong></span>
+                    </div>`;
+
+                    content.innerHTML = html;
+                })
+                .withFailureHandler(err => {
+                    if (content) content.innerHTML = `<div class="text-center p-4 text-danger"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load students: ${err.message}</div>`;
+                })
+                .getBatchOverview(batchName);
+        }
+
 
         /**
          * Handles the form submission for creating a new batch.
@@ -14836,6 +15105,8 @@
             const batchName = batchNameInput.value.trim();
             const mentorName = mentorNameInput.value.trim();
             const workArea = document.getElementById('newBatchWorkArea').value;
+            const batchTitleInput = document.getElementById('newBatchTitle');
+            const batchTitle = batchTitleInput ? batchTitleInput.value.trim() : '';
 
             if (!batchName || !mentorName) {
                 showAdminFeedback('Please provide both a batch name and a mentor name.', 'warning');
@@ -14859,6 +15130,7 @@
                     if (response.status === 'success') {
                         batchNameInput.value = '';
                         mentorNameInput.value = '';
+                        if (batchTitleInput) batchTitleInput.value = '';
                         const skillInput = document.getElementById('newBatchSkill');
                         if (skillInput) skillInput.value = '';
                         loadBatches(); // Refresh the list of batches
@@ -14867,7 +15139,7 @@
                 .withFailureHandler(err => {
                     showAdminFeedback(`Error creating batch: ${err.message}`, 'error');
                 })
-                .createBatch(batchName, mentorName, '', '', workArea, 'Active', document.getElementById('newBatchSkill').value);
+                .createBatch(batchName, mentorName, '', '', workArea, 'Active', document.getElementById('newBatchSkill').value, batchTitle);
         }
 
         /**
@@ -16997,9 +17269,9 @@
             `;
             container.innerHTML = html;
         }
-
         let currentSlotTimingsDataCache = [];
-
+        let currentEditingSlotSource = null;
+        let currentEditingSlotId = null;
         function fetchSlotTimingsAdmin() {
             document.getElementById('slotTimingsTableBody').innerHTML = '<tr><td colspan="5" class="text-center py-3 text-muted"><i class="fas fa-spinner fa-spin"></i> Loading configurations...</td></tr>';
             google.script.run
@@ -17013,17 +17285,22 @@
                             const tType = String(slot.type || '').toUpperCase();
                             const isExpired = slot.expired === true;
 
-                            let targetInfo = tType === 'DEFAULT' ? 'System Wide' : (tType === 'BATCH' ? (slot.batch || '-') : (slot.applicable_target || slot.batch || '-'));
+                            let targetInfo = tType === 'DEFAULT' ? 'System Wide' : (tType === 'BATCH' ? getBatchDisplayHtml(slot.batch) : (getBatchDisplayHtml(slot.applicable_target || slot.batch)));
                             let timeBounds = `<i class="fa fa-clock text-muted"></i> ${slot.start_time || '--'} - ${slot.end_time || '--'}`;
 
                             // Auto-compute adjusted late/early based on grace
+                            const isLegacy = tType.includes('LEGACY');
                             let lateDisplay = slot.late_after || '--';
                             let earlyDisplay = slot.early_exit_before || '--';
                             let graceNote = '';
                             if (isRfid && (parseInt(slot.rfid_grace_late) > 0 || parseInt(slot.rfid_grace_early) > 0)) {
                                 graceNote = `<br><small class="text-info fst-italic"><i class="fas fa-shield-alt"></i> Grace: L+${slot.rfid_grace_late || 0}m / E-${slot.rfid_grace_early || 0}m</small>`;
                             }
-                            let rules = `Max Late: ${lateDisplay}${graceNote ? '' : ''}<br>Early Exit: ${earlyDisplay}${graceNote}`;
+                            // For legacy slots: don't show misleading -- / --
+                            let lateEarlyDisplay = isLegacy
+                                ? `<div class="small text-muted fst-italic mt-1" style="font-size:0.72rem;"><i class="fas fa-info-circle"></i> No late/early rules</div>`
+                                : `<div class="small fw-bold text-muted mt-1" style="font-size:0.75rem;"><i class="fas fa-sliders-h me-1"></i> ${lateDisplay} / ${earlyDisplay}</div>`;
+                            let rules = `Max Late: ${lateDisplay}<br>Early Exit: ${earlyDisplay}${graceNote}`;
 
                             let rfidText = "";
                             if (slot.mode === 'both') {
@@ -17077,6 +17354,22 @@
                                 validText = `<div class="badge bg-light text-muted border px-3 fw-bold"><i class="fas fa-infinity"></i> Unlimited</div>`;
                             }
 
+                            // Build the late/early dedicated column
+                            let lateEarlyCol = '';
+                            if (isLegacy) {
+                                lateEarlyCol = `<div class="small text-muted fst-italic" style="font-size:0.72rem;"><i class="fas fa-info-circle"></i> No late/early rules</div>`;
+                            } else {
+                                const lateVal = slot.late_after || '--';
+                                const earlyVal = slot.early_exit_before || '--';
+                                const glate = parseInt(slot.rfid_grace_late) > 0 ? `<br><small class="text-info"><i class="fas fa-shield-alt"></i> +${slot.rfid_grace_late}m late grace</small>` : '';
+                                const gearly = parseInt(slot.rfid_grace_early) > 0 ? `<br><small class="text-info"><i class="fas fa-shield-alt"></i> -${slot.rfid_grace_early}m early grace</small>` : '';
+                                lateEarlyCol = `
+                                    <div class="d-flex flex-column gap-1" style="font-size:0.8rem;">
+                                        <div><i class="fas fa-arrow-right text-warning me-1"></i><span class="text-muted">Late:</span> <strong class="font-monospace">${lateVal}</strong>${glate}</div>
+                                        <div><i class="fas fa-arrow-left text-danger me-1"></i><span class="text-muted">Early:</span> <strong class="font-monospace">${earlyVal}</strong>${gearly}</div>
+                                    </div>`;
+                            }
+
                             html += `
                                 <tr class="align-middle ${isExpired ? 'table-secondary alpha-50' : ''}">
                                     <td data-label="Type / Targets">
@@ -17089,10 +17382,10 @@
                                         </div>
                                     </td>
                                     <td data-label="Active Bounds"><span class="badge bg-light text-dark border p-2 font-monospace shadow-sm fw-bold" style="font-size:0.85rem;"><i class="fas fa-clock text-primary me-1"></i> ${slot.start_time} - ${slot.end_time}</span></td>
+                                    <td data-label="Late / Early">${lateEarlyCol}</td>
                                     <td data-label="RFID Rule">
                                         <div class="d-flex flex-column">
                                             ${rfidText}
-                                            <div class="small fw-bold text-muted mt-1" style="font-size:0.75rem;"><i class="fas fa-sliders-h me-1"></i> ${lateDisplay} / ${earlyDisplay}</div>
                                             ${graceNote}
                                         </div>
                                     </td>
@@ -17111,7 +17404,7 @@
                         document.getElementById('slotTimingsTableBody').innerHTML = html;
                     } else {
                         currentSlotTimingsDataCache = [];
-                        document.getElementById('slotTimingsTableBody').innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted"><i class="fas fa-info-circle fs-4 mb-2 d-block"></i>No active shift configurations found</td></tr>';
+                        document.getElementById('slotTimingsTableBody').innerHTML = '<tr><td colspan="7" class="text-center py-4 text-muted"><i class="fas fa-info-circle fs-4 mb-2 d-block"></i>No active shift configurations found</td></tr>';
                     }
                 })
                 .getSlotTimingsList();
@@ -17159,39 +17452,100 @@
             }).getSlotTimingHistory();
         }
 
-        function convertTo24Hour(time12h) {
-            if (!time12h) return "";
-            time12h = String(time12h).trim();
-            if (!time12h.includes(" ")) return time12h; // Already 24h
-            const parts = time12h.split(' ');
-            const modifier = parts[1].toUpperCase();
-            let [hours, minutes] = parts[0].split(':');
-            hours = parseInt(hours, 10);
-            if (modifier === 'AM') {
-                if (hours === 12) hours = 0; // 12 AM = midnight
-            } else if (modifier === 'PM') {
-                if (hours !== 12) hours = hours + 12; // 12 PM stays 12
+        function convertTo24Hour(timeStr) {
+            if (!timeStr) return "";
+            timeStr = String(timeStr).trim().replace(/\s+/g, ' ');
+            
+            // Normalize double colons or any weird delimiters
+            timeStr = timeStr.replace(/:+/g, ':');
+            
+            // Check for AM/PM in the string
+            const isPM = /pm/i.test(timeStr);
+            const isAM = /am/i.test(timeStr);
+            
+            // Strip AM/PM and keep only digits and colons
+            let cleanTime = timeStr.replace(/[a-zA-Z]/g, '').trim();
+            
+            let parts = cleanTime.split(':');
+            let hours = parseInt(parts[0], 10);
+            let minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+            
+            if (isNaN(hours)) hours = 0;
+            if (isNaN(minutes)) minutes = 0;
+            
+            if (isPM && hours !== 12) {
+                hours += 12;
+            } else if (isAM && hours === 12) {
+                hours = 0;
+            } else if (!isAM && !isPM) {
+                // Guess PM for afternoon hours 1-7 if no AM/PM indicator is present
+                if (hours > 0 && hours < 8) {
+                    hours += 12;
+                }
             }
-            return `${String(hours).padStart(2, '0')}:${minutes}`;
+            
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+        }
+
+        function getBatchDisplayName(batchIdOrName) {
+            if (!batchIdOrName) return '';
+            const batches = window.batchesData || window.allBatches || [];
+            const found = batches.find(b => 
+                String(b.id || '').toLowerCase() === String(batchIdOrName).toLowerCase() || 
+                String(b.name || '').toLowerCase() === String(batchIdOrName).toLowerCase()
+            );
+            return found ? (found.name || found.BatchName) : batchIdOrName;
+        }
+
+        function getBatchDisplayHtml(batchIdOrName) {
+            if (!batchIdOrName) return '';
+            const batches = window.batchesData || window.allBatches || [];
+            const found = batches.find(b => 
+                String(b.id || '').toLowerCase() === String(batchIdOrName).toLowerCase() || 
+                String(b.name || '').toLowerCase() === String(batchIdOrName).toLowerCase()
+            );
+            if (!found) return batchIdOrName;
+            const name = found.name || found.BatchName || batchIdOrName;
+            const title = found.title || '';
+            return title
+                ? `${name}<div style="font-size:0.75rem; color:#64748b; margin-top:2px;"><i class="fas fa-certificate me-1" style="color:#f59e0b;"></i><strong>${title}</strong></div>`
+                : name;
         }
 
         function editSlotTimingAdmin(index) {
             const slot = currentSlotTimingsDataCache[index];
             if (!slot) return;
 
-            document.getElementById('slotConfigType').value = slot.type;
-            document.getElementById('slotConfigApplicableFor').value = slot.applicable_for || 'student';
-            toggleSlotFields();
+            currentEditingSlotSource = slot._source || null;
+            currentEditingSlotId = slot._id || null;
 
-            if (slot.type === 'BATCH') {
-                document.getElementById('slotConfigBatch').value = slot.batch || slot.applicable_target;
-            } else if (slot.type === 'SPECIAL') {
-                if (slot.applicable_for === 'batch') {
-                    document.getElementById('slotConfigBatch').value = slot.applicable_target;
+            const tType = String(slot.type || '').toUpperCase();
+
+            // --- Restore all fields before toggling visibility ---
+            // Always reset applicable_for and target fields first so stale
+            // form state from a previous edit session doesn't bleed in.
+            document.getElementById('slotConfigApplicableFor').value = slot.applicable_for || 'student';
+            document.getElementById('slotConfigBatch').value = '';
+            document.getElementById('slotConfigStudent').value = '';
+
+            if (tType === 'DEFAULT') {
+                document.getElementById('slotConfigType').value = 'DEFAULT';
+            } else if (tType === 'BATCH' || tType === 'BATCH_LEGACY_SLOT') {
+                document.getElementById('slotConfigType').value = 'BATCH';
+                // Preserve the RAW batch value for matching; display name shown via getBatchDisplayName
+                document.getElementById('slotConfigBatch').value = slot.batch || slot.applicable_target || '';
+            } else {
+                // SPECIAL, STUDENT, BATCH_LEGACY_EXCEPTION
+                document.getElementById('slotConfigType').value = 'SPECIAL';
+                const appFor = (slot.applicable_for === 'batch' || tType === 'BATCH_LEGACY_EXCEPTION') ? 'batch' : 'student';
+                document.getElementById('slotConfigApplicableFor').value = appFor;
+                if (appFor === 'batch') {
+                    document.getElementById('slotConfigBatch').value = slot.batch || slot.applicable_target || '';
                 } else {
-                    document.getElementById('slotConfigStudent').value = slot.applicable_target;
+                    document.getElementById('slotConfigStudent').value = slot.applicable_target || '';
                 }
             }
+            toggleSlotFields();
 
             document.getElementById('slotStartTimePicker').value = convertTo24Hour(slot.start_time);
             document.getElementById('slotEndTimePicker').value = convertTo24Hour(slot.end_time);
@@ -17199,14 +17553,50 @@
             document.getElementById('slotEarlyTimePicker').value = convertTo24Hour(slot.early_exit_before);
 
             document.getElementById('slotEnabled').checked = (String(slot.enabled) === 'true' || slot.enabled === true);
-            document.getElementById('slotRfidEnabled').checked = (String(slot.rfid_enabled) === 'true' || slot.rfid_enabled === true);
-            document.getElementById('rfidGraceGroup').style.display = document.getElementById('slotRfidEnabled').checked ? 'flex' : 'none';
-            document.getElementById('slotRfidLateGrace').value = slot.rfid_grace_late || '';
-            document.getElementById('slotRfidEarlyGrace').value = slot.rfid_grace_early || '';
+            const rfidChecked = (String(slot.rfid_enabled) === 'true' || slot.rfid_enabled === true);
+            document.getElementById('slotRfidEnabled').checked = rfidChecked;
+            // Always show grace group so admin can edit grace values regardless of RFID toggle
+            document.getElementById('rfidGraceGroup').style.display = 'flex';
+            document.getElementById('slotRfidLateGrace').value = (slot.rfid_grace_late != null && slot.rfid_grace_late !== '') ? String(slot.rfid_grace_late) : '';
+            document.getElementById('slotRfidEarlyGrace').value = (slot.rfid_grace_early != null && slot.rfid_grace_early !== '') ? String(slot.rfid_grace_early) : '';
             document.getElementById('slotValidityDays').value = slot.validity_days || '';
 
+            // For legacy batch slots: Late After and Early Exit Before were previously not stored
+            // — now they ARE editable and will be saved to SLOT_SETTINGS for persistence.
+            // We only show an informational note (not disabling the fields).
+            const isLegacySlot = tType === 'BATCH_LEGACY_SLOT' || tType === 'BATCH_LEGACY_EXCEPTION';
+            document.getElementById('slotLateTimePicker').disabled = false;
+            document.getElementById('slotEarlyTimePicker').disabled = false;
+
+            // Show or hide legacy info banner
+            let legacyNote = document.getElementById('slotLegacyInfoNote');
+            if (!legacyNote) {
+                legacyNote = document.createElement('div');
+                legacyNote.id = 'slotLegacyInfoNote';
+                legacyNote.style.cssText = 'background:#e0f2fe;border:1px solid #38bdf8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:0.875rem;display:flex;align-items:center;gap:8px;';
+                // Insert before the time row
+                const timeRow = document.getElementById('slotStartTimePicker')?.closest('.row');
+                if (timeRow) timeRow.parentNode.insertBefore(legacyNote, timeRow);
+            }
+            if (isLegacySlot) {
+                legacyNote.style.display = 'flex';
+                legacyNote.innerHTML = '<i class="fas fa-info-circle" style="color:#0ea5e9;"></i><span><strong>Legacy Batch Slot:</strong> You can now edit <em>Late After</em>, <em>Early Exit Before</em>, and <em>Grace</em> settings here. These will be saved and shown in the table after you click <strong>GO / SAVE</strong>.</span>';
+            } else {
+                legacyNote.style.display = 'none';
+            }
+
             switchSlotTab('activeConfigs', document.querySelector('#slotTimingsTabs .nav-link')); // switch to form/list
-            showAdminFeedback('Configuration loaded for editing. Click Save to apply changes.', 'info');
+            
+            // Scroll the edit form smoothly into view
+            const formTitle = document.querySelector('h5 i.fa-clock');
+            if (formTitle) {
+                formTitle.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                const formSelect = document.getElementById('slotConfigType');
+                if (formSelect) formSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            
+            showAdminFeedback('Configuration loaded for editing. Click SAVE to apply changes.', 'info');
         }
 
         function toggleSlotTimingStatusAdmin(index, currentState) {
@@ -17254,8 +17644,35 @@
             return String(hours).padStart(2, '0') + ':' + minutes + ' ' + ampm;
         }
 
+        function resetSlotConfigForm() {
+            currentEditingSlotSource = null;
+            currentEditingSlotId = null;
+            document.getElementById('slotConfigType').value = 'DEFAULT';
+            document.getElementById('slotConfigApplicableFor').value = 'student';
+            document.getElementById('slotConfigBatch').value = '';
+            document.getElementById('slotConfigStudent').value = '';
+            document.getElementById('slotStartTimePicker').value = '';
+            document.getElementById('slotEndTimePicker').value = '';
+            document.getElementById('slotLateTimePicker').value = '';
+            document.getElementById('slotLateTimePicker').disabled = false;
+            document.getElementById('slotEarlyTimePicker').value = '';
+            document.getElementById('slotEarlyTimePicker').disabled = false;
+            document.getElementById('slotEnabled').checked = true;
+            document.getElementById('slotRfidEnabled').checked = false;
+            document.getElementById('rfidGraceGroup').style.display = 'flex';
+            document.getElementById('slotRfidLateGrace').value = '';
+            document.getElementById('slotRfidEarlyGrace').value = '';
+            document.getElementById('slotValidityDays').value = '';
+            // Hide legacy info note if present
+            const legacyNote = document.getElementById('slotLegacyInfoNote');
+            if (legacyNote) legacyNote.style.display = 'none';
+            toggleSlotFields();
+        }
+
         function saveSlotTimingAdmin() {
             const data = {
+                _source: currentEditingSlotSource,
+                _id: currentEditingSlotId,
                 type: document.getElementById('slotConfigType').value,
                 applicable_for: document.getElementById('slotConfigApplicableFor').value,
                 batch: document.getElementById('slotConfigBatch').value,
@@ -17284,19 +17701,61 @@
                 showAdminFeedback('Start Time and End Time are required', 'error');
                 return;
             }
+
+            // For legacy batch slots: after saving the primary slot (start/end time),
+            // also save the late/early/grace data into SLOT_SETTINGS so it persists and shows in the table.
+            const isLegacySave = data._source === 'SLOTS' || data._source === 'SLOT_EXCEPTIONS';
+
             showAdminLoading();
             google.script.run
                 .withSuccessHandler(res => {
                     hideAdminLoading();
                     if (res.status === 'success') {
-                        showAdminFeedback(res.message, 'success');
-                        fetchSlotTimingsAdmin();
+                        // If this is a legacy slot and we have extra timing data to persist,
+                        // also write a SLOT_SETTINGS BATCH entry for the late/early/grace values.
+                        if (isLegacySave && data.batch && (data.late_after || data.early_exit_before || data.rfid_grace_late || data.rfid_grace_early)) {
+                            const extraData = {
+                                _source: 'SLOT_SETTINGS',
+                                _id: null,
+                                type: 'BATCH',
+                                applicable_for: 'batch',
+                                batch: data.batch,
+                                applicable_target: data.batch,
+                                start_time: data.start_time,
+                                end_time: data.end_time,
+                                late_after: data.late_after,
+                                early_exit_before: data.early_exit_before,
+                                enabled: data.enabled,
+                                rfid_enabled: data.rfid_enabled,
+                                rfid_grace_late: data.rfid_grace_late,
+                                rfid_grace_early: data.rfid_grace_early,
+                                validity_days: data.validity_days,
+                                created_from: 'legacy_slot_upgrade'
+                            };
+                            google.script.run
+                                .withSuccessHandler(res2 => {
+                                    showAdminFeedback('✅ Slot updated with Late/Early/Grace settings saved.', 'success');
+                                    resetSlotConfigForm();
+                                    fetchSlotTimingsAdmin();
+                                })
+                                .withFailureHandler(() => {
+                                    showAdminFeedback(res.message + ' (Note: Late/Early data could not be saved separately)', 'success');
+                                    resetSlotConfigForm();
+                                    fetchSlotTimingsAdmin();
+                                })
+                                .saveNewSlotTiming(extraData);
+                        } else {
+                            showAdminFeedback(res.message, 'success');
+                            resetSlotConfigForm();
+                            fetchSlotTimingsAdmin();
+                        }
                     } else {
                         showAdminFeedback(res.message, 'error');
                     }
                 })
                 .saveNewSlotTiming(data);
         }
+
 
         async function deleteSlotTimingAdmin(index) {
             const slot = currentSlotTimingsDataCache[index];
@@ -17707,6 +18166,8 @@
                 document.getElementById('editBatchProject').value = batch.project || '';
                 document.getElementById('editBatchWorkArea').value = batch.workArea;
                 document.getElementById('editBatchStatus').value = batch.status;
+                const certTitleEl = document.getElementById('editBatchCertTitle');
+                if (certTitleEl) certTitleEl.value = batch.title || '';
                 const descEl = document.getElementById('editBatchDescription');
                 if (descEl) descEl.value = batch.description || '';
                 const skillEl = document.getElementById('editBatchSkillLearned');
@@ -18149,6 +18610,8 @@
             const workArea = document.getElementById('editBatchWorkArea').value;
             const status = document.getElementById('editBatchStatus').value;
             const skillLearned = document.getElementById('editBatchSkillLearned').value;
+            const certTitleEl = document.getElementById('editBatchCertTitle');
+            const batchTitle = certTitleEl ? certTitleEl.value.trim() : '';
 
             showAdminFeedback('Updating batch...', 'info');
 
@@ -18162,7 +18625,7 @@
                         showAdminFeedback('Update failed: ' + res.message, 'error');
                     }
                 })
-                .updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned);
+                .updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned, batchTitle);
         }
 
         async function performDeleteBatch() {
@@ -22316,7 +22779,13 @@
 
     <script>
         function gsvToggleMobileMenu() {
-            document.body.classList.toggle("sidebar-open");
+            if (window.innerWidth <= 991) {
+                document.body.classList.toggle("sidebar-open");
+                document.body.classList.remove("sidebar-collapsed");
+            } else {
+                document.body.classList.toggle("sidebar-collapsed");
+                document.body.classList.remove("sidebar-open");
+            }
         }
 
         function initMobileSidebar() {
@@ -22353,11 +22822,11 @@
                 });
             }
 
-            // Auto-close handlers for links
+            // Auto-close handlers for links (modified to <= 991 to match CSS breakpoint)
             const navLinks = document.querySelectorAll('.sidebar a, .dashboard-nav a, .nav-link, .nav-link-custom');
             navLinks.forEach(link => {
                 link.addEventListener('click', function () {
-                    if (window.innerWidth < 768) {
+                    if (window.innerWidth <= 991) {
                         document.body.classList.remove("sidebar-open");
                     }
                 });
@@ -22374,7 +22843,31 @@
                 }
             });
         }
+        (function() {
+            const startPicker = document.getElementById('slotStartTimePicker');
+            if (startPicker) {
+                startPicker.addEventListener('change', function() {
+                    const val = this.value;
+                    if (val) {
+                        let [h, m] = val.split(':').map(Number);
+                        h = (h + 1) % 24;
+                        document.getElementById('slotLateTimePicker').value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                    }
+                });
+            }
 
+            const endPicker = document.getElementById('slotEndTimePicker');
+            if (endPicker) {
+                endPicker.addEventListener('change', function() {
+                    const val = this.value;
+                    if (val) {
+                        let [h, m] = val.split(':').map(Number);
+                        h = (h - 1 + 24) % 24;
+                        document.getElementById('slotEarlyTimePicker').value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                    }
+                });
+            }
+        })();
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initMobileSidebar);
         } else {

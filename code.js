@@ -71,7 +71,7 @@ const SHEET_SCHEMAS = {
   [SHEET_NAMES.ACTIVITY_LOG]: ["ID", "Action", "Description", "Timestamp"],
   [SHEET_NAMES.ATTENDANCE_OTP]: ["ID", "RegistrationID", "OTP", "ActionType", "ExpiryTimestamp", "TargetDate", "TargetTime", "Reason", "Status", "LeaveType", "AttachmentUrl"],
   [SHEET_NAMES.APP_SETTINGS]: ['SettingKey', 'SettingValue'],
-  [SHEET_NAMES.BATCHES]: ["BatchID", "BatchName", "Mentor", "Project", "Description", "SkillLearned", "WorkArea", "Students", "Status", "SlotStartTime", "SlotEndTime"],
+  [SHEET_NAMES.BATCHES]: ["BatchID", "BatchName", "BatchTitle", "Mentor", "Project", "Description", "SkillLearned", "WorkArea", "Students", "Status", "SlotStartTime", "SlotEndTime"],
   [SHEET_NAMES.BATCH_CHAT]: ['MessageID', 'BatchName', 'SenderID', 'SenderName', 'Message', 'Timestamp', 'FileID', 'FileName', 'FileUrl'],
   [SHEET_NAMES.STUDENT_DIARY]: ["StudentRegistrationID", "Date", "Content", "Status", "Timestamp"],
   [SHEET_NAMES.EMAIL_TEMPLATES]: ["TemplateID", "Type", "Subject", "Body", "Placeholders"],
@@ -132,21 +132,50 @@ function getSystemFolder(type) {
     'batches': 'GSV_Batches'
   };
 
-  const settingsRes = getAppSettings();
-  const settings = (settingsRes && settingsRes.status === 'success') ? settingsRes.settings : {};
   const key = mapping[type];
+
+  // 1. Try hardcoded constants in code.js first!
+  const defaults = {
+    'generated': DEFAULT_CERTIFICATES_FOLDER_ID,
+    'uploads': DEFAULT_UPLOADS_FOLDER_ID,
+    'chat': DEFAULT_CHAT_FOLDER_ID,
+    'reports': DEFAULT_REPORTS_FOLDER_ID,
+    'documents': DEFAULT_DOCUMENTS_FOLDER_ID,
+    'batches': DEFAULT_BATCHES_FOLDER_ID
+  };
   
-  let folderId = settings[key];
-  if (folderId) {
+  let folderId = defaults[type];
+  
+  if (folderId && folderId.toString().trim() !== '') {
     try {
-      const folder = DriveApp.getFolderById(folderId);
-      folder.getName(); // Verify access check
+      const folder = DriveApp.getFolderById(folderId.toString().trim());
+      folder.getName(); // Access check
+      Logger.log(`Using hardcoded folder ID from code.js for ${type}: ${folderId}`);
+      // Save it to settings to keep it synced
+      if (key) {
+        saveAppSettings({ [key]: folderId.toString().trim() });
+      }
       return folder;
     } catch (e) {
-      Logger.log(`Access to folder ID ${folderId} for '${type}' failed: ${e.toString()}. Resolving fallback.`);
+      Logger.log(`Access to hardcoded folder ID ${folderId} for '${type}' failed: ${e.toString()}`);
     }
   }
 
+  // 2. Try settings sheet
+  const settingsRes = getAppSettings();
+  const settings = (settingsRes && settingsRes.status === 'success') ? settingsRes.settings : {};
+  let settingsFolderId = settings[key];
+  if (settingsFolderId && settingsFolderId.toString().trim() !== '') {
+    try {
+      const folder = DriveApp.getFolderById(settingsFolderId.toString().trim());
+      folder.getName(); // Access check
+      return folder;
+    } catch (e) {
+      Logger.log(`Access to settings folder ID ${settingsFolderId} for '${type}' failed: ${e.toString()}`);
+    }
+  }
+
+  // 3. Search Drive by name
   const name = folderNames[type] || `GSV_${type}`;
   try {
     const folders = DriveApp.getFoldersByName(name);
@@ -163,6 +192,7 @@ function getSystemFolder(type) {
     Logger.log(`Search for folder '${name}' failed: ${e.toString()}`);
   }
 
+  // 4. Create new folder if all else fails
   try {
     const newFolder = DriveApp.createFolder(name);
     try {
@@ -367,36 +397,7 @@ function doGet(e) {
       downloadUrl: downloadUrl
     })).setMimeType(ContentService.MimeType.JSON);
   }
-  if (e && e.parameter && e.parameter.action === 'dump_debug_reg_id') {
-    const sheet = getSheet(SHEET_NAMES.REGISTRATIONS);
-    const objects = getSheetDataAsObjects(sheet);
-    const keys = objects.length > 0 ? Object.keys(objects[0]) : [];
-    const sample = objects.slice(0, 10).map(o => ({
-      keys: keys,
-      regId: o.RegistrationID || o.registrationId || o['Registration ID'] || o['RegistrationID'] || null,
-      name: getStudentFullName_(o),
-      mobile: o.MobileNumber || o.mobile,
-      status: o.ApplicationStatus || o.status
-    }));
-    return ContentService.createTextOutput(JSON.stringify({keys: keys, sample: sample})).setMimeType(ContentService.MimeType.JSON);
-  }
-  if (e && e.parameter && e.parameter.action === 'find_student') {
-    const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
-    const consolidatedSheet = getSheet(SHEET_NAMES.CONSOLIDATED_INTERNSHIPS);
-    const closedSheet = getSheet('Closed and Opt-out');
-    const allRegSources = [
-      ...(regSheet ? getSheetDataAsObjects(regSheet) : []),
-      ...(consolidatedSheet ? getSheetDataAsObjects(consolidatedSheet) : []),
-      ...(closedSheet ? getSheetDataAsObjects(closedSheet) : [])
-    ];
-    const target = (e.parameter.id || '').toUpperCase().trim();
-    const found = allRegSources.filter(s => {
-      const rid = String(s.RegistrationID || s['Registration ID'] || '').toUpperCase().trim();
-      const name = getStudentFullName_(s).toUpperCase();
-      return rid.includes(target) || name.includes(target);
-    });
-    return ContentService.createTextOutput(JSON.stringify(found)).setMimeType(ContentService.MimeType.JSON);
-  }
+
   try {
     let page;
     if (e && e.parameter && e.parameter.page) {
@@ -1331,7 +1332,7 @@ function markRfidAttendance_UNUSED(uid, action, mac, e) {
             slot_status: 'EXPIRED'
           };
         }
-        if (currentTotal < (sMins - 30)) {
+        if (currentTotal < (sMins - 120)) {
           return {
             status: 'error',
             message: 'Slot Not Started',
@@ -1341,6 +1342,7 @@ function markRfidAttendance_UNUSED(uid, action, mac, e) {
             slot_status: 'NOT_STARTED'
           };
         }
+
         if (currentTotal > (sMins + graceLate)) attendanceStatus = 'Late with Present';
         else if (currentTotal < sMins) attendanceStatus = 'Early Present';
       }
@@ -3517,7 +3519,10 @@ function sendAdminEmail(arg1, arg2, arg3) {
       // Bulk email to Approved/Active
       const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
       const data = getSheetDataAsObjects(regSheet);
-      recipients = data.filter(s => s.ApplicationStatus === 'Approved' || s.ApplicationStatus === 'Active').map(s => ({
+      recipients = data.filter(s => {
+        const sStatus = String(s.ApplicationStatus || '').toLowerCase();
+        return sStatus === 'approved' || sStatus === 'active' || sStatus === 'assigned';
+      }).map(s => ({
         email: s.GmailID,
         name: s.FirstName,
         fullData: {
@@ -3776,34 +3781,50 @@ function getTemplateIdForDocType(docType) {
     'applicationForm': 'GSV_Application_Form_Template'
   };
 
-  const settingsResult = getAppSettings();
-  const appSettings = (settingsResult && settingsResult.status === 'success') ? settingsResult.settings : {};
   const settingKey = mapping[docType];
   
-  let templateId = settingKey ? appSettings[settingKey] : null;
+  // 1. Try hardcoded constants in code.js (TEMPLATE_IDS) first!
+  const defaults = {
+    'internshipCertificate': TEMPLATE_IDS.INTERNSHIP_CERTIFICATE,
+    'offerLetter': TEMPLATE_IDS.OFFER_LETTER,
+    'joiningLetter': TEMPLATE_IDS.JOINING_LETTER,
+    'entryPass': TEMPLATE_IDS.ENTRY_PASS,
+    'idCard': TEMPLATE_IDS.ID_CARD,
+    'applicationForm': TEMPLATE_IDS.APPLICATION_FORM
+  };
   
-  if (!templateId) {
-    const defaults = {
-      'internshipCertificate': TEMPLATE_IDS.INTERNSHIP_CERTIFICATE,
-      'offerLetter': TEMPLATE_IDS.OFFER_LETTER,
-      'joiningLetter': TEMPLATE_IDS.JOINING_LETTER,
-      'entryPass': TEMPLATE_IDS.ENTRY_PASS,
-      'idCard': TEMPLATE_IDS.ID_CARD,
-      'applicationForm': TEMPLATE_IDS.APPLICATION_FORM
-    };
-    templateId = defaults[docType];
-  }
-
-  if (templateId) {
+  let templateId = defaults[docType];
+  
+  if (templateId && templateId.toString().trim() !== '') {
     try {
-      const file = DriveApp.getFileById(templateId);
+      const file = DriveApp.getFileById(templateId.toString().trim());
       file.getName(); // Access check
-      return templateId;
+      Logger.log(`Using hardcoded template ID from code.js for ${docType}: ${templateId}`);
+      // Save it to settings to keep it synced
+      if (settingKey) {
+        saveAppSettings({ [settingKey]: templateId.toString().trim() });
+      }
+      return templateId.toString().trim();
     } catch (e) {
-      Logger.log(`Access to template ID ${templateId} for '${docType}' failed: ${e.toString()}. Resolving fallback.`);
+      Logger.log(`Access to hardcoded template ID ${templateId} for '${docType}' failed: ${e.toString()}`);
     }
   }
 
+  // 2. Fall back to settings sheet if hardcoded constant is empty/invalid
+  const settingsResult = getAppSettings();
+  const appSettings = (settingsResult && settingsResult.status === 'success') ? settingsResult.settings : {};
+  let settingsId = settingKey ? appSettings[settingKey] : null;
+  if (settingsId && settingsId.toString().trim() !== '') {
+    try {
+      const file = DriveApp.getFileById(settingsId.toString().trim());
+      file.getName(); // Access check
+      return settingsId.toString().trim();
+    } catch (e) {
+      Logger.log(`Access to settings template ID ${settingsId} for '${docType}' failed: ${e.toString()}`);
+    }
+  }
+
+  // 3. Search Drive by name
   const name = templateNames[docType] || `GSV_${docType}_Template`;
   try {
     const files = DriveApp.getFilesByName(name);
@@ -3820,6 +3841,7 @@ function getTemplateIdForDocType(docType) {
     Logger.log(`Search for template file '${name}' failed: ${e.toString()}`);
   }
 
+  // 4. Create new default template only if everything else failed
   try {
     const newId = createDefaultDocTemplate(docType, name);
     if (settingKey) {
@@ -3873,7 +3895,15 @@ function getStudentDataForDoc(registrationId) {
         'Department': ['department', 'Department', 'DEPARTMENT', 'Dept', 'dept'],
         'CollegeName': ['collegename', 'CollegeName', 'College', 'college'],
         'Semester': ['semester', 'Semester', 'SEMESTER'],
-        'EducationType': ['educationtype', 'EducationType', 'Education Type']
+        'EducationType': ['educationtype', 'EducationType', 'Education Type'],
+        'RegisterNumber': ['registernumber', 'RegisterNumber', 'RollNumber', 'rollnumber', 'Roll No', 'RollNo'],
+        'GPA': ['gpa', 'CGPA', 'GPA', 'cgpa'],
+        'CollegeCode': ['collegecode', 'CollegeCode', 'College Code'],
+        'CollegeDistrict': ['collegedistrict', 'CollegeDistrict', 'College District'],
+        'InterestedArea': ['interestedarea', 'InterestedArea', 'Interested Area'],
+        'Batch': ['batch', 'Batch', 'assignedbatch', 'AssignedBatch'],
+        'RFID_TagID': ['rfid_tagid', 'rfidtagid', 'RFID_TagID', 'rfidtag', 'RFIDTag'],
+        'ApplicationStatus': ['applicationstatus', 'ApplicationStatus', 'Status', 'status']
       };
 
       // For each field, try to find its value using various casing
@@ -3906,6 +3936,9 @@ function getStudentDataForDoc(registrationId) {
       studentInfo.CompanyName = COMPANY_NAME;
       studentInfo.CompanyContact = COMPANY_CONTACT;
       studentInfo.CompanyWebsite = COMPANY_WEBSITE;
+      studentInfo.ChiefEngineerName = COMPANY_CHIEF_ENGINEER || "S Vijay Varman";
+      studentInfo.ChiefEngineerTitle = COMPANY_CHIEF_TITLE || "Chief Electrical Engineer";
+      studentInfo.ChiefEngineerDetails = CHIEF_ENGINEER_DETAILS;
 
       let safeDuration = studentInfo.DurationDays !== undefined ? studentInfo.DurationDays : 'N/A';
       if (safeDuration instanceof Date || !safeDuration || safeDuration === 'N/A') {
@@ -3975,6 +4008,50 @@ function getStudentDataForDoc(registrationId) {
         }
       });
 
+      // Try fetching Project Title if BATCH is set
+      let projectTitle = 'N/A';
+      let skillLearned = 'N/A';
+      let supervisorName = 'N/A';
+      const studentBatch = studentInfo.Batch;
+      if (studentBatch && studentBatch !== 'N/A') {
+        try {
+          const batchSheet = getSheet(SHEET_NAMES.BATCHES);
+          if (batchSheet) {
+            const bData = getSheetDataAsObjects(batchSheet);
+            const searchBatch = String(studentBatch).trim().toLowerCase();
+            const bObj = bData.find(b =>
+              String(b.BatchName || '').trim().toLowerCase() === searchBatch ||
+              String(b.BatchID || '').trim().toLowerCase() === searchBatch
+            );
+
+            if (bObj) {
+              projectTitle = bObj.BatchTitle || bObj.Batchtitle || bObj.batchTitle || bObj.Project || bObj.ProjectTitle || 'N/A';
+              // Check various header possibilities for Skill Learned
+              skillLearned = bObj.SkillLearned || bObj['Skill Learned'] || bObj['skillLearned'] || bObj['Skill Learned (For Certificate)'] || 'N/A';
+              supervisorName = bObj.Mentor || bObj.Supervisor || bObj['Industrial Supervisor'] || 'N/A';
+            }
+          }
+
+          // Secondary check / fallback in dedicated storage if first check failed or returned N/A
+          if (skillLearned === 'N/A' || !skillLearned) {
+            const contentFallback = getCertificateContentForBatch(studentBatch);
+            if (contentFallback) skillLearned = contentFallback;
+          }
+        } catch (e) {
+          Logger.log("Error fetching batch data for student: " + e.message);
+        }
+      }
+
+      studentInfo.ProjectTitle = projectTitle;
+      studentInfo.SkillLearned = skillLearned;
+      studentInfo.Mentor = supervisorName;
+      studentInfo.IndustrialSupervisor = supervisorName;
+      studentInfo['Industrial Supervisor'] = supervisorName;
+
+      // Handle ApplicationStatus fallback
+      studentInfo.ApplicationStatus = studentInfo.ApplicationStatus || studentInfo.Status || '';
+      studentInfo.Status = studentInfo.ApplicationStatus;
+
       // Extensive logging for debugging
       Logger.log('=== Student Data Debug ===');
       Logger.log('RegistrationID: ' + registrationId);
@@ -3993,6 +4070,117 @@ function getStudentDataForDoc(registrationId) {
 
 
 
+function getExistingDocFileId(registrationId, docType) {
+  // 1. Check Registrations sheet first
+  const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
+  if (regSheet) {
+    const data = regSheet.getDataRange().getValues();
+    if (data.length > 1) {
+      const headers = data[0];
+      const regColIdx = headers.indexOf("RegistrationID");
+      if (regColIdx !== -1) {
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase()) {
+            let fileId = null;
+            if (docType === 'applicationForm') {
+              const colIdx = headers.indexOf("ApplicationPdfId");
+              if (colIdx !== -1) fileId = data[i][colIdx];
+            } else if (docType === 'offerLetter') {
+              const colIdx = headers.indexOf("OfferLetterPdfId");
+              if (colIdx !== -1) fileId = data[i][colIdx];
+            } else if (docType === 'joiningLetter') {
+              const colIdx = headers.indexOf("JoiningLetterPdfId");
+              if (colIdx !== -1) fileId = data[i][colIdx];
+            } else if (docType === 'internshipCertificate' || docType === 'completionCertificate') {
+              const colIdx = headers.indexOf("CertificateLink");
+              if (colIdx !== -1) fileId = data[i][colIdx];
+            }
+            if (fileId && fileId.toString().trim() !== '') {
+              const idMatch = fileId.toString().match(/[-\w]{25,}/);
+              const resolvedId = idMatch ? idMatch[0] : fileId.toString().trim();
+              try {
+                const file = DriveApp.getFileById(resolvedId);
+                if (!file.isTrashed()) {
+                  return { fileId: resolvedId, url: file.getUrl() };
+                }
+              } catch (e) {
+                Logger.log(`Existing file ID ${resolvedId} from Registrations sheet for ${docType} is not accessible: ${e.toString()}`);
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Check GENERATED_DOCUMENTS sheet
+  const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
+  if (docSheet) {
+    const docData = docSheet.getDataRange().getValues();
+    if (docData.length > 1) {
+      const docHeaders = docData[0];
+      const regColIdx = docHeaders.indexOf("StudentRegistrationID");
+      const typeColIdx = docHeaders.indexOf("DocType");
+      const pdfColIdx = docHeaders.indexOf("PdfFileId");
+      const urlColIdx = docHeaders.indexOf("DocUrl");
+      if (regColIdx !== -1 && typeColIdx !== -1 && (pdfColIdx !== -1 || urlColIdx !== -1)) {
+        for (let i = 1; i < docData.length; i++) {
+          if (String(docData[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase() && docData[i][typeColIdx] === docType) {
+            let fileId = (pdfColIdx !== -1) ? docData[i][pdfColIdx] : null;
+            let fileUrl = (urlColIdx !== -1) ? docData[i][urlColIdx] : null;
+            if (!fileId && fileUrl) {
+              const idMatch = fileUrl.toString().match(/[-\w]{25,}/);
+              fileId = idMatch ? idMatch[0] : null;
+            }
+            if (fileId && fileId.toString().trim() !== '') {
+              try {
+                const file = DriveApp.getFileById(fileId.toString().trim());
+                if (!file.isTrashed()) {
+                  return { fileId: fileId.toString().trim(), url: file.getUrl() };
+                }
+              } catch (e) {
+                Logger.log(`Existing file ID ${fileId} from GENERATED_DOCUMENTS for ${docType} is not accessible: ${e.toString()}`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 3. Check FILE_MANAGER sheet
+  const fmSheet = getSheet(SHEET_NAMES.FILE_MANAGER);
+  if (fmSheet) {
+    const fmData = fmSheet.getDataRange().getValues();
+    if (fmData.length > 1) {
+      const fmHeaders = fmData[0];
+      const regColIdx = fmHeaders.indexOf("StudentRegistrationID");
+      const typeColIdx = fmHeaders.indexOf("DocType");
+      const idColIdx = fmHeaders.indexOf("FileId");
+      if (regColIdx !== -1 && typeColIdx !== -1 && idColIdx !== -1) {
+        for (let i = 1; i < fmData.length; i++) {
+          if (String(fmData[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase() && fmData[i][typeColIdx] === docType) {
+            const fileId = fmData[i][idColIdx];
+            if (fileId && fileId.toString().trim() !== '') {
+              try {
+                const file = DriveApp.getFileById(fileId.toString().trim());
+                if (!file.isTrashed()) {
+                  return { fileId: fileId.toString().trim(), url: file.getUrl() };
+                }
+              } catch (e) {
+                Logger.log(`Existing file ID ${fileId} from FILE_MANAGER for ${docType} is not accessible: ${e.toString()}`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 function generateDocumentAndMail(docType, registrationId, sendEmailOption = false, isAdmin = false) {
   try {
     // === FIX: MAP studentAppForm to applicationForm ===
@@ -4000,33 +4188,130 @@ function generateDocumentAndMail(docType, registrationId, sendEmailOption = fals
       docType = 'applicationForm';
     }
 
-    // === FIX: EARLY CHECK FOR ALREADY GENERATED DOCUMENTS ===
-    if (docType === 'applicationForm') {
-      const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
-      if (docSheet) {
-        const docData = docSheet.getDataRange().getValues();
-        if (docData.length > 1) {
-          const docHeaders = docData[0];
-          const regColIdx = docHeaders.indexOf("StudentRegistrationID");
-          const typeColIdx = docHeaders.indexOf("DocType");
-          const urlColIdx = docHeaders.indexOf("DocUrl");
-          if (regColIdx !== -1 && typeColIdx !== -1 && urlColIdx !== -1) {
-            for (let i = 1; i < docData.length; i++) {
-              if (String(docData[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase() && docData[i][typeColIdx] === docType) {
-                const existingUrl = docData[i][urlColIdx];
-                if (existingUrl && existingUrl.toString().trim() !== '') {
-                  Logger.log(`Found existing applicationForm for ${registrationId}. Reusing: ${existingUrl}`);
-                  return { status: 'success', message: `${docType} fetched from existing records.`, url: existingUrl, driveLink: existingUrl, viewUrl: existingUrl };
+    const studentData = getStudentDataForDoc(registrationId);
+    if (!studentData) return { status: 'error', message: `Student ${registrationId} not found.` };
+
+    // === NEW: REUSE EXISTING GENERATED FILE IF IT EXISTS AND IS VALID ===
+    const existingDoc = getExistingDocFileId(registrationId, docType);
+    if (existingDoc) {
+      Logger.log(`Found existing ${docType} for ${registrationId}. Reusing: ${existingDoc.url}`);
+      const finalPdf = DriveApp.getFileById(existingDoc.fileId);
+
+      if (sendEmailOption && studentData.GmailID) {
+        let emailType = 'confirmationLetter';
+        if (docType === 'offerLetter') emailType = 'offerLetterNotify';
+        else if (docType === 'internshipCertificate' || docType === 'completionCertificate') emailType = 'internshipCompletedNotify';
+
+        const templates = getEmailTemplates(); // Fetch from sheet
+        let subject = `Document: ${docType} - ${studentData.CompanyName}`;
+        let emailBody = '';
+
+        // Determine certNumber for placeholder values
+        let certNumber = '';
+        if (docType === 'internshipCertificate' || docType === 'completionCertificate') {
+          const certSheet = getSheet(SHEET_NAMES.CERTIFICATE_DATA);
+          if (certSheet) {
+            const cData = certSheet.getDataRange().getValues();
+            const cRegCol = cData[0].indexOf("StudentRegistrationID");
+            const cNumCol = cData[0].indexOf("CertificateNumber");
+            if (cRegCol !== -1 && cNumCol !== -1) {
+              for (let i = 1; i < cData.length; i++) {
+                if (String(cData[i][cRegCol]).toUpperCase() === registrationId.toUpperCase()) {
+                  certNumber = cData[i][cNumCol];
+                  break;
                 }
               }
             }
           }
         }
-      }
-    }
 
-    const studentData = getStudentDataForDoc(registrationId);
-    if (!studentData) return { status: 'error', message: `Student ${registrationId} not found.` };
+        if (templates && templates[emailType]) {
+          subject = templates[emailType].subject;
+          emailBody = templates[emailType].content;
+
+          const emailReplacements = {
+            '{{StudentName}}': studentData.FullName,
+            '{{FullName}}': studentData.FullName,
+            '{{RegistrationID}}': studentData.RegistrationID,
+            '{{InternshipStartDate}}': studentData.FormattedStartDate,
+            '{{InternshipEndDate}}': studentData.FormattedEndDate,
+            '{{DurationDays}}': studentData.DurationDays,
+            '{{CompanyName}}': studentData.CompanyName,
+            '{{CollegeName}}': studentData.CollegeName,
+            '{{Department}}': studentData.Department,
+            '{{CertificateNumber}}': certNumber,
+            '{{IssuedDate}}': studentData.TodayDate,
+            '{{studentName}}': studentData.FullName,
+            '{{fullName}}': studentData.FullName,
+            '{{regId}}': studentData.RegistrationID,
+            '{{registrationId}}': studentData.RegistrationID,
+            '{{startDate}}': studentData.FormattedStartDate,
+            '{{endDate}}': studentData.FormattedEndDate,
+            '{{durationDays}}': studentData.DurationDays,
+            '{{companyName}}': studentData.CompanyName,
+            '{{collegeName}}': studentData.CollegeName,
+            '{{department}}': studentData.Department,
+            '{studentName}': studentData.FullName,
+            '{fullName}': studentData.FullName,
+            '{regId}': studentData.RegistrationID,
+            '{registrationId}': studentData.RegistrationID,
+            '{startDate}': studentData.FormattedStartDate,
+            '{endDate}': studentData.FormattedEndDate,
+            '{StudentName}': studentData.FullName,
+            '{FullName}': studentData.FullName,
+            '{RegistrationID}': studentData.RegistrationID,
+            '{InternshipStartDate}': studentData.FormattedStartDate,
+            '{InternshipEndDate}': studentData.FormattedEndDate,
+            '{CollegeName}': studentData.CollegeName,
+            '{Department}': studentData.Department,
+            '{CertificateNumber}': certNumber
+          };
+
+          for (const key in emailReplacements) {
+            const val = emailReplacements[key] || '';
+            emailBody = emailBody.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val);
+            subject = subject.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), val);
+          }
+          emailBody = emailBody.replace(/href="#"/g, `href="${existingDoc.url}"`).replace(/href='#'/g, `href="${existingDoc.url}"`);
+        } else {
+          emailBody = getProfessionalEmailBody(docType === 'internshipCertificate' ? 'completion' : 'confirmation', studentData, existingDoc.url);
+        }
+
+        MailApp.sendEmail({
+          to: studentData.GmailID,
+          subject: subject,
+          htmlBody: emailBody,
+          attachments: [finalPdf.getBlob()],
+          name: studentData.CompanyName
+        });
+
+        // Update sent flag in generated documents sheet
+        const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
+        if (docSheet) {
+          const docData = docSheet.getDataRange().getValues();
+          const regColIdx = docData[0].indexOf("StudentRegistrationID");
+          const typeColIdx = docData[0].indexOf("DocType");
+          const emailColIdx = docData[0].indexOf("SentViaEmail");
+          if (regColIdx !== -1 && typeColIdx !== -1 && emailColIdx !== -1) {
+            for (let i = 1; i < docData.length; i++) {
+              if (String(docData[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase() && docData[i][typeColIdx] === docType) {
+                docSheet.getRange(i + 1, emailColIdx + 1).setValue('Yes');
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      return { 
+        status: 'success', 
+        message: `${docType} reused from existing records.`, 
+        driveLink: existingDoc.url, 
+        url: existingDoc.url, 
+        viewUrl: existingDoc.url,
+        fileId: existingDoc.fileId 
+      };
+    }
 
     // === DOCUMENT APPROVAL SYSTEM (GSV-ERP-V2) ===
     const restrictedDocs = ['internshipCertificate', 'COMPLETION_CERTIFICATE', 'offerLetter', 'OFFER_LETTER', 'joiningLetter', 'JOINING_LETTER', 'idCard', 'ID_CARD', 'entryPass', 'ENTRY_PASS', 'General Permission', 'Grace Period', 'Emergency Leave'];
@@ -4636,7 +4921,13 @@ function generateDocumentAndMail(docType, registrationId, sendEmailOption = fals
       `${docType} for ${studentData.FullName} (Reg ID: ${registrationId}) generated successfully.`,
       'ALL'
     );
-    // ------------------------------------------
+    if (docType === 'internshipCertificate' || docType === 'completionCertificate') {
+      try {
+        checkAndCloseBatchSlots(studentData.Batch || studentData.batch);
+      } catch (err) {
+        Logger.log("checkAndCloseBatchSlots error: " + err.message);
+      }
+    }
 
     return { status: 'success', message: 'Document generated.', driveLink: driveLink, url: driveLink, fileId: finalPdf.getId() };
   } catch (e) {
@@ -5369,7 +5660,19 @@ function studentLogin(regId, mobile) {
       const sMobile = s.MobileNumber ? s.MobileNumber.toString().trim() : "";
       return (sRegId === inputRegId && sMobile === inputMobile);
     });
-
+    
+    if (!student) {
+      const consolidatedSheet = getSheet(SHEET_NAMES.CONSOLIDATED_INTERNSHIPS);
+      if (consolidatedSheet) {
+        const consolidatedData = getSheetDataAsObjects(consolidatedSheet);
+        student = consolidatedData.find(s => {
+          const sRegId = s.RegistrationID ? s.RegistrationID.toString().trim().toUpperCase() : "";
+          const sMobile = s.MobileNumber ? s.MobileNumber.toString().trim() : "";
+          return (sRegId === inputRegId && sMobile === inputMobile);
+        });
+      }
+    }
+    
     if (!student) {
       const closedSheet = getSheet('Closed and Opt-out');
       if (closedSheet) {
@@ -5410,21 +5713,45 @@ function studentLogin(regId, mobile) {
     }
 
     // 2. Date Check (Handled on frontend for partial access)
+    let startGraceDays = 0;
+    let endGraceDays = 60;
+    try {
+      const settingsRes = getAppSettings();
+      if (settingsRes.status === 'success' && settingsRes.settings) {
+        const sVal = parseInt(settingsRes.settings['InternshipStartGracePeriod']);
+        if (!isNaN(sVal) && sVal >= 0) startGraceDays = sVal;
+        const eVal = parseInt(settingsRes.settings['InternshipEndGracePeriod']);
+        if (!isNaN(eVal) && eVal >= 0) endGraceDays = eVal;
+      }
+    } catch(e) {}
 
-    if (status === 'completed') {
-      if (endDate) {
-        const graceDate = new Date(endDate);
-        graceDate.setDate(graceDate.getDate() + 60);
-        if (today > graceDate) {
-          return {
-            status: "error",
-            message: "Your access has expired. The 60-day grace period after your internship completion has ended."
-          };
-        }
+    if (startDate) {
+      const startGraceDate = new Date(startDate);
+      startGraceDate.setDate(startGraceDate.getDate() - startGraceDays);
+      if (today < startGraceDate) {
+        return {
+          status: "error",
+          message: `Your internship has not started yet. Login is allowed starting ${startGraceDays} days before your start date.`
+        };
+      }
+    }
+
+    if (endDate) {
+      const gpAreas = getApprovedGracePeriodAreas(student.RegistrationID);
+      const hasGP = gpAreas.length > 0;
+      if (today > endDate && !hasGP) {
+        return {
+          status: "error",
+          message: "Your internship period ended on " + Utilities.formatDate(endDate, Session.getScriptTimeZone() || 'Asia/Kolkata', "yyyy-MM-dd") + " and your portal access has concluded. Please contact supervisor for extension."
+        };
       }
     }
 
     logActivity('Student Login', inputRegId, 'Successful login.');
+
+    const gpAreas = getApprovedGracePeriodAreas(student.RegistrationID);
+    const hasAttendanceGP = gpAreas.includes('attendance');
+    const hasDiaryGP = gpAreas.includes('diary');
 
     return {
       status: "success",
@@ -5437,9 +5764,11 @@ function studentLogin(regId, mobile) {
         lastName: student.LastName || '',
         mobile: student.MobileNumber,
         batch: student.Batch,
-        status: student.ApplicationStatus,
+        status: student.ApplicationStatus || student.Status || '',
         startDate: student.InternshipStartDate,
         endDate: student.InternshipEndDate,
+        startGraceDays: startGraceDays,
+        endGraceDays: endGraceDays,
         documents: {
           bonafide: !!student.BonafideUrl,
           declaration: !!student.DeclarationUrl,
@@ -5447,8 +5776,8 @@ function studentLogin(regId, mobile) {
           other: !!student.OtherUrl
         },
         permissions: {
-          attendance: student.AttendanceAccess !== false && student.AttendanceAccess !== 'FALSE' && String(student.AttendanceAccess).trim().toUpperCase() !== 'FALSE',
-          diary: student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE'
+          attendance: (student.AttendanceAccess !== false && student.AttendanceAccess !== 'FALSE' && String(student.AttendanceAccess).trim().toUpperCase() !== 'FALSE') || hasAttendanceGP,
+          diary: (student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE') || hasDiaryGP
         }
       }
     };
@@ -6966,95 +7295,7 @@ function updateApplicationStatus_OLD(rowNum, newStatus, studentGmail, studentNam
   return updateApplicationStatus([registrationId], newStatus);
 }
 
-/**
- * Helper to fetch student data by ID for document generation and verification.
- */
-function getStudentDataForDoc(registrationId) {
-  const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
-  if (!regSheet) return null;
-  const data = getSheetDataAsObjects(regSheet);
 
-  // Find the student
-  const student = data.find(s => s.RegistrationID === registrationId);
-  if (!student) return null;
-
-  // Try fetching Project Title if BATCH is set
-  let projectTitle = 'N/A';
-  let skillLearned = 'N/A';
-  let supervisorName = 'N/A';
-  if (student.Batch) {
-    try {
-      const batchSheet = getSheet(SHEET_NAMES.BATCHES);
-      if (batchSheet) {
-        const bData = getSheetDataAsObjects(batchSheet);
-        const searchBatch = String(student.Batch).trim().toLowerCase();
-        const bObj = bData.find(b =>
-          String(b.BatchName || '').trim().toLowerCase() === searchBatch ||
-          String(b.BatchID || '').trim().toLowerCase() === searchBatch
-        );
-
-        if (bObj) {
-          projectTitle = bObj.Project || bObj['ProjectTitle'] || 'N/A';
-          // Check various header possibilities for Skill Learned
-          skillLearned = bObj.SkillLearned || bObj['Skill Learned'] || bObj['skillLearned'] || bObj['Skill Learned (For Certificate)'] || 'N/A';
-          supervisorName = bObj.Mentor || bObj.Supervisor || bObj['Industrial Supervisor'] || 'N/A';
-        }
-      }
-
-      // Secondary check / fallback in dedicated storage if first check failed or returned N/A
-      if (skillLearned === 'N/A' || !skillLearned) {
-        const contentFallback = getCertificateContentForBatch(student.Batch);
-        if (contentFallback) skillLearned = contentFallback;
-      }
-    } catch (e) {
-      Logger.log("Error fetching batch data for student: " + e.message);
-    }
-  }
-
-  // Return formatted data for template placeholders
-  return {
-    FullName: `${student.FirstName || ''} ${student.MiddleName || ''} ${student.LastName || ''}`.trim().replace(/\s+/g, ' '),
-    FirstName: student.FirstName,
-    LastName: student.LastName,
-    RegistrationID: student.RegistrationID,
-    RegisterNumber: student.RegisterNumber,
-    EducationType: student.EducationType,
-    CollegeCode: student.CollegeCode,
-    Department: student.Department,
-    CollegeName: student.CollegeName,
-    CollegeDistrict: student.CollegeDistrict || 'N/A',
-    Address: student.Address || 'N/A',
-    Pincode: student.Pincode || 'N/A',
-    District: student.District || 'N/A',
-    MobileNumber: student.MobileNumber || 'N/A',
-    GmailID: student.GmailID,
-    InternshipStartDate: student.InternshipStartDate,
-    FormattedStartDate: formatDateDisplay(student.InternshipStartDate),
-    InternshipEndDate: student.InternshipEndDate,
-    FormattedEndDate: formatDateDisplay(student.InternshipEndDate),
-    DurationDays: student.DurationDays || 'N/A',
-    DateofBirth: student.DateofBirth,
-    FormattedDOB: formatDateDisplay(student.DateofBirth),
-    TodayDate: formatDateDisplay(new Date()),
-    ApplicationStatus: student.ApplicationStatus,
-    GPA: student.GPA || 'N/A',
-    InterestedArea: student.InterestedArea || 'N/A',
-    Year: student.Year || 'N/A',
-    Semester: student.Semester || 'N/A',
-    Batch: student.Batch || 'N/A',
-    SkillLearned: skillLearned,
-    ProjectTitle: projectTitle,
-    Mentor: supervisorName,
-    IndustrialSupervisor: supervisorName,
-    'Industrial Supervisor': supervisorName,
-    CompanyName: COMPANY_NAME,
-    CompanyContact: COMPANY_CONTACT,
-    CompanyWebsite: COMPANY_WEBSITE,
-    ChiefEngineerName: COMPANY_CHIEF_ENGINEER || "S Vijay Varman",
-    ChiefEngineerTitle: COMPANY_CHIEF_TITLE || "Chief Electrical Engineer",
-    ChiefEngineerDetails: CHIEF_ENGINEER_DETAILS
-  };
-}
 
 function getBatchProjectTitle_(batchName) {
   if (!batchName) return null;
@@ -7252,407 +7493,7 @@ function updateStudentFullData(studentDataChanges) {
 
 // Function generateDocumentAndMail starts here
 function generateDocumentAndMailMain(docType, registrationId, sendEmailOption = false, isAdmin = false) {
-  try {
-    // === FIX: MAP studentAppForm to applicationForm ===
-    if (docType === 'studentAppForm') {
-      docType = 'applicationForm';
-    }
-
-    // === FIX: EARLY CHECK FOR ALREADY GENERATED DOCUMENTS ===
-    if (docType === 'applicationForm') {
-      const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
-      if (docSheet) {
-        const docData = docSheet.getDataRange().getValues();
-        if (docData.length > 1) {
-          const docHeaders = docData[0];
-          const regColIdx = docHeaders.indexOf("StudentRegistrationID");
-          const typeColIdx = docHeaders.indexOf("DocType");
-          const urlColIdx = docHeaders.indexOf("DocUrl");
-          if (regColIdx !== -1 && typeColIdx !== -1 && urlColIdx !== -1) {
-            for (let i = 1; i < docData.length; i++) {
-              if (String(docData[i][regColIdx]).toUpperCase() === String(registrationId).toUpperCase() && docData[i][typeColIdx] === docType) {
-                const existingUrl = docData[i][urlColIdx];
-                if (existingUrl && existingUrl.toString().trim() !== '') {
-                  Logger.log(`Found existing applicationForm for ${registrationId}. Reusing: ${existingUrl}`);
-                  return { status: 'success', message: `${docType} fetched from existing records.`, url: existingUrl, driveLink: existingUrl, viewUrl: existingUrl };
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    const studentData = getStudentDataForDoc(registrationId);
-    if (!studentData) {
-      return {
-        status: 'error',
-        message: `Student with Registration ID ${registrationId} not found.`
-      };
-    }
-
-    // === DOCUMENT APPROVAL SYSTEM (GSV-ERP-V2) ===
-    const restrictedDocs = ['internshipCertificate', 'COMPLETION_CERTIFICATE', 'offerLetter', 'OFFER_LETTER', 'joiningLetter', 'JOINING_LETTER', 'idCard', 'ID_CARD', 'entryPass', 'ENTRY_PASS', 'General Permission', 'Grace Period', 'Emergency Leave'];
-    const unrestrictedForStudents = ['studentDiary', 'dailyLogForm5'];
-
-    if (!isAdmin && restrictedDocs.includes(docType) && !unrestrictedForStudents.includes(docType)) {
-      const approval = checkDocumentApproval(registrationId, docType);
-      if (approval.status !== 'Approved') {
-        return {
-          status: 'approval_required',
-          message: 'Admin approval is required to generate this document.',
-          docType: docType,
-          approvalStatus: approval.status
-        };
-      }
-    }
-    // ===========================================
-
-    if (docType === 'internshipCertificate' && studentData.ApplicationStatus !== 'Completed') {
-      return {
-        status: 'warning',
-        message: `Cannot generate certificate. Internship not yet marked as 'Completed' for ${registrationId}.`
-      };
-    }
-
-    // Advanced Mapping for dynamically generated System Reports
-    const advancedReportMap = {
-      'dailyAttendanceReport': 'attendance',
-      'attendanceDocument': 'completeAttendanceReport',
-      'dailyTaskReport': 'taskCompletion',
-      'projectCompletion': 'projectCompletion',
-      'studentCV': 'completeStudentReport'
-    };
-
-    if (advancedReportMap[docType]) {
-      const mappedType = advancedReportMap[docType];
-      const startD = new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0];
-      const endD = new Date().toISOString().split('T')[0];
-
-      const options = {
-        reportScope: 'student',
-        studentId: registrationId,
-        reportMode: 'duration',
-        includeHeader: true,
-        includeSignatures: true,
-        includeCompanyDetails: true,
-        includeTimestamp: true
-      };
-
-      const res = generateReport(mappedType, 'custom', startD, endD, sendEmailOption, options);
-      if (res && res.status === 'success') {
-        return {
-          status: 'success',
-          message: res.message,
-          url: res.url,
-          driveLink: res.url
-        };
-      }
-      return res || { status: 'error', message: 'Failed to generate dynamic advanced document.' };
-    }
-
-    let templateId = getTemplateIdForDocType(docType);
-
-    if (!templateId) {
-      return {
-        status: 'error',
-        message: `Template ID for ${docType.replace(/([A-Z])/g, ' $1').toLowerCase()} is not configured. Please check Admin Settings.`
-      };
-    }
-
-    // Generate document reference number: GSV/YY/TYPE/SLNO
-    const yearTwoDigit = new Date().getFullYear().toString().slice(-2);
-    const slNo = Math.floor(Math.random() * 9000) + 1000;
-
-    let newDocName = `${docType}_${registrationId}_${studentData.LastName || 'Student'}`;
-    let subject = `Your ${docType.replace(/([A-Z])/g, ' $1').trim()} from ${COMPANY_NAME}`;
-    let bodyText = `Dear ${studentData.FirstName},\n\nPlease find your ${docType.replace(/([A-Z])/g, ' $1').toLowerCase().trim()} attached.\n\n`;
-
-    // Placeholder values - using key names without braces
-    let placeholderValues = {
-      'FullName': studentData.FullName || '',
-      'StudentName': studentData.FullName || '',
-      'RegistrationID': studentData.RegistrationID || '',
-      'UniversityRegisterNumber': studentData.RegisterNumber || 'N/A',
-      'RegisterNumber': studentData.RegisterNumber || 'N/A',
-      'EducationType': studentData.EducationType || 'N/A',
-      'CollegeCode': studentData.CollegeCode || 'N/A',
-      'Address': studentData.Address || 'N/A',
-      'Pincode': studentData.Pincode || 'N/A',
-      'District': studentData.District || 'N/A',
-      'CollegeName': studentData.CollegeName || 'N/A',
-      'Department': studentData.Department || 'N/A',
-      'DEPARTMENT': studentData.Department || 'N/A',
-      'department': studentData.Department || 'N/A',
-      'Dept': studentData.Department || 'N/A',
-      'InternshipStartDate': studentData.FormattedStartDate || '',
-      'InternshipEndDate': studentData.FormattedEndDate || '',
-      'DurationDays': studentData.DurationDays || 'N/A',
-      'DateofBirth': studentData.FormattedDOB || '',
-      'TodayDate': studentData.TodayDate || '',
-      'CurrentDate': studentData.TodayDate || '',
-      'Current Date': studentData.TodayDate || '',
-      'CompanyName': COMPANY_NAME,
-      'CompanyContact': COMPANY_CONTACT,
-      'CompanyWebsite': COMPANY_WEBSITE,
-      'ChiefEngineerName': studentData.ChiefEngineerName || '',
-      'ChiefEngineerTitle': studentData.ChiefEngineerTitle || '',
-      'ChiefEngineerDetailsPlaceholder': (studentData.ChiefEngineerDetails || '').replace(/<br\s*\/?>/gi, "\n"),
-      'YEAR': studentData.Year || 'N/A',
-      'Year': studentData.Year || 'N/A',
-      'year': studentData.Year || 'N/A',
-      'YY': yearTwoDigit,
-      'SLNO': slNo.toString(),
-      'SkillLearned': studentData.SkillLearned || 'N/A',
-      'skilllearned': studentData.SkillLearned || 'N/A',
-      'Skill Learned': studentData.SkillLearned || 'N/A',
-      'skill learned': studentData.SkillLearned || 'N/A',
-      'ProjectTitle': studentData.ProjectTitle || 'N/A',
-      'Project Title': studentData.ProjectTitle || 'N/A',
-      'project title': studentData.ProjectTitle || 'N/A',
-      'Project': studentData.ProjectTitle || 'N/A',
-      'Batch': studentData.Batch || 'N/A',
-      'BatchName': studentData.Batch || 'N/A',
-      'Semester': studentData.Semester || 'N/A',
-      'MobileNumber': studentData.MobileNumber || 'N/A',
-      'GmailID': studentData.GmailID || 'N/A',
-      'Email': studentData.GmailID || 'N/A'
-    };
-
-    Logger.log('Placeholder Values for ' + registrationId + ': ' + JSON.stringify(placeholderValues));
-
-    if (docType === 'internshipCertificate') {
-      const certSheet = getSheet(SHEET_NAMES.CERTIFICATE_DATA);
-      // New Certificate Generation Logic: GSV/YEAR/TYPE/COLLEGE CODE/SLNO
-      const certNumber = generateCertificateSerialNumber(studentData, certSheet);
-
-      placeholderValues['CertificateNumber'] = certNumber;
-      placeholderValues['IssuedDate'] = studentData.TodayDate;
-      newDocName = `InternshipCertificate_${certNumber}_${studentData.LastName}.pdf`;
-      subject = `Your Internship Completion Certificate - ${COMPANY_NAME}`;
-      bodyText = `Dear ${studentData.FirstName},\n\nCongratulations on successfully completing your internship! Please find your internship certificate attached.\n\nWe wish you all the best for your future endeavors.\n\n`;
-    }
-
-    Logger.log(`Attempting to use template ID: ${templateId} for docType: ${docType}`);
-    let templateFile;
-    try {
-      templateFile = DriveApp.getFileById(templateId);
-    } catch (e) {
-      Logger.log(`Error accessing template file ID ${templateId}: ${e.toString()}`);
-      return {
-        status: 'error',
-        message: `Error accessing template file for ${docType}: ${e.message}. Ensure template ID (${templateId}) is correct, accessible, and not in trash.`
-      };
-    }
-
-    let targetFolder;
-    try {
-      if (!CERTIFICATES_FOLDER_ID || CERTIFICATES_FOLDER_ID.includes("YOUR_")) {
-        Logger.log("CERTIFICATES_FOLDER_ID is not configured.");
-        return {
-          status: 'error',
-          message: 'Certificates destination folder not configured in script. Contact admin.'
-        };
-      }
-      targetFolder = DriveApp.getFolderById(getSystemFolderId('generated'));
-    } catch (e) {
-      Logger.log(`Error accessing target folder ID ${CERTIFICATES_FOLDER_ID}: ${e.toString()}`);
-      return {
-        status: 'error',
-        message: `Error accessing destination folder: ${e.message}. Ensure folder ID is correct and script has access.`
-      };
-    }
-
-    const newFileNameForCopy = `${docType}_${registrationId}_${studentData.LastName || 'Student'}_${new Date().getTime()}`;
-    let newFile;
-    try {
-      newFile = templateFile.makeCopy(newFileNameForCopy, targetFolder);
-    } catch (e) {
-      Logger.log(`Error making copy of template ${templateId} to folder ${CERTIFICATES_FOLDER_ID}: ${e.toString()}`);
-      return {
-        status: 'error',
-        message: `Failed to copy template: ${e.message}. Check folder permissions and template validity.`
-      };
-    }
-
-    let doc;
-    try {
-      doc = DocumentApp.openById(newFile.getId());
-    } catch (e) {
-      Logger.log(`Error opening copied document ${newFile.getId()}: ${e.toString()}`);
-      try {
-        newFile.setTrashed(true);
-      } catch (trashErr) {
-        Logger.log("Failed to trash problematic file copy: " + trashErr);
-      }
-      return {
-        status: 'error',
-        message: `Error opening generated document: ${e.message}.`
-      };
-    }
-
-    const docBody = doc.getBody();
-
-    // === MODERN ALIGNMENT FIX (FOR APPLICATION FORM) ===
-    if (docType === 'applicationForm') {
-      modernizeApplicationFormLayout(docBody, studentData);
-    }
-
-    // Use regex pattern that matches {{placeholder}} with optional spaces
-    // Enhanced to handle unbalanced braces like {{Placeholder} or {Placeholder}} 
-    for (const placeholderName in placeholderValues) {
-      const value = placeholderValues[placeholderName] || '';
-      const pattern = '\\{+\\s*' + placeholderName + '\\s*\\}+';
-      try {
-        docBody.replaceText(pattern, value);
-      } catch (e) {
-        Logger.log('Error replacing placeholder ' + placeholderName + ': ' + e.toString());
-      }
-    }
-
-    // --- QR / BARCODE INJECTION LOGIC ---
-    try {
-      let qrData = "GSV Electrical Enterprises\n";
-      qrData += "Name: " + studentData.FullName + "\n";
-      qrData += "Reg No: " + registrationId + "\n";
-      qrData += "Doc Type: " + docType;
-
-      if (docType === 'internshipCertificate' && placeholderValues['CertificateNumber']) {
-        qrData += "\nCert No: " + placeholderValues['CertificateNumber'];
-      }
-
-      // 100% Native Zero-API Compressed Barcode (Code 128 Typographic)
-      ['BARCODE', 'Barcode', 'QRCode', 'QR_CODE'].forEach(tag => {
-        const pattern = '\\{\\{\\s*' + tag + '\\s*\\}\\}';
-        let found = docBody.findText(pattern);
-
-        while (found) {
-          let textElement = found.getElement().asText();
-          let startOffset = found.getStartOffset();
-          let endOffset = found.getEndOffsetInclusive();
-
-          textElement.deleteText(startOffset, endOffset);
-
-          let baseStr = String(registrationId).toUpperCase().replace(/[^0-9A-Z\-\.\ \$\/\+\%]/g, '');
-          let barcodeText = generateNativelyCompactCode128(baseStr);
-
-          textElement.insertText(startOffset, barcodeText);
-          textElement.setFontFamily(startOffset, startOffset + barcodeText.length - 1, "Libre Barcode 128");
-          textElement.setFontSize(startOffset, startOffset + barcodeText.length - 1, 36);
-          textElement.setBold(startOffset, startOffset + barcodeText.length - 1, false);
-          textElement.setItalic(startOffset, startOffset + barcodeText.length - 1, false);
-
-          if (textElement.getParent().getType() === DocumentApp.ElementType.PARAGRAPH) {
-            let pa = textElement.getParent().asParagraph();
-            pa.setSpacingAfter(0);
-            pa.setSpacingBefore(0);
-            pa.setLineSpacing(1);
-          }
-
-          found = docBody.findText(pattern);
-        }
-      });
-    } catch (qrError) {
-      Logger.log('Error generating Native Barcode Font: ' + qrError.toString());
-    }
-
-    // --- PAGINATION LOGIC: Form 1, Form 2, Form 3 Alignment (Mandatory New Page) ---
-    try {
-      const paginationLabels = ["Form-1", "Form 1", "Form-2", "Form 2", "Form-3", "Form 3", "Form-4", "Form 4"];
-      paginationLabels.forEach(label => {
-        let found = docBody.findText(label);
-        while (found) {
-          let e = found.getElement();
-          let p = e;
-          while (p && p.getType() !== DocumentApp.ElementType.PARAGRAPH && p.getType() !== DocumentApp.ElementType.LIST_ITEM) {
-            p = p.getParent();
-          }
-          if (p) {
-            try {
-              if (p.asParagraph) {
-                // If it's Form 1, it only needs a page break if it's not at the very top
-                if (label.toLowerCase().includes("form 1") || label.toLowerCase().includes("form-1")) {
-                  if (docBody.getChildIndex(p) > 0) p.asParagraph().setPageBreakBefore(true);
-                } else {
-                  p.asParagraph().setPageBreakBefore(true);
-                }
-              } else if (p.asListItem) p.asListItem().setPageBreakBefore(true);
-            } catch (e) { }
-          }
-          // Only first occurrence of each label needs to be at top of page for distinct forms
-          break;
-        }
-      });
-    } catch (err) { Logger.log("Admin Pagination Error: " + err); }
-    // --- END PAGINATION LOGIC ---
-
-    // --- END BARCODE LOGIC ---
-
-    doc.saveAndClose();
-
-    const pdfBlob = newFile.getAs(MimeType.PDF);
-    pdfBlob.setName(newDocName);
-
-    if (docType === 'internshipCertificate') {
-      const certSheet = getSheet(SHEET_NAMES.CERTIFICATE_DATA);
-      if (certSheet) {
-        const certHeader = certSheet.getRange("1:1").getValues()[0];
-        const certRecord = {
-          CertificateNumber: placeholderValues['CertificateNumber'],
-          StudentRegistrationID: registrationId,
-          StudentName: studentData.FullName,
-          RegisterNumber: studentData.RegisterNumber,
-          Department: studentData.Department,
-          InternshipStartDate: studentData.InternshipStartDate,
-          InternshipEndDate: studentData.InternshipEndDate,
-          DurationDays: studentData.DurationDays,
-          IssuedDate: new Date(),
-          Status: 'Valid',
-          Batch: studentData.Batch,
-          CertificatePdfId: newFile.getId()
-        };
-        const certRow = certHeader.map(col => certRecord[col] !== undefined ? certRecord[col] : '');
-        appendRow(SHEET_NAMES.CERTIFICATE_DATA, certRow);
-      } else {
-        Logger.log("Certificate Data sheet not found, cannot record certificate issuance.");
-      }
-    }
-
-    // DriveApp.getFileById(newFile.getId()).setTrashed(true);
-
-    let message = `Document '${newDocName}' generated successfully.`;
-    let driveLink = newFile.getUrl();
-    let emailActuallySent = false;
-
-    if (sendEmailOption && studentData.GmailID) {
-      if (sendEmail(studentData.GmailID, subject, bodyText, bodyText.replace(/\n/g, '<br>'), [pdfBlob])) {
-        message += ` Email sent to ${studentData.GmailID}.`;
-        logActivity('Document Sent', registrationId, `${docType} sent to ${studentData.FullName}.`);
-        emailActuallySent = true;
-      } else {
-        message += ` Email sending failed for ${studentData.GmailID}. Document generated.`;
-        logActivity('Document Generated (Email Fail)', registrationId, `${docType} generated for ${studentData.FullName}, but email failed.`);
-      }
-    } else if (sendEmailOption && !studentData.GmailID) {
-      message += ` Email not sent (student email missing). Document generated.`;
-    }
-
-    createAdminNotification('Document Generated', `${docType} for ${studentData.FullName} (Reg ID: ${registrationId}) was generated.`);
-    return {
-      status: 'success',
-      message: message,
-      documentName: newDocName,
-      driveLink: driveLink,
-      emailSent: emailActuallySent
-    };
-
-  } catch (error) {
-    Logger.log(`Error in generateDocumentAndMail (${docType}, ${registrationId}): ${error.toString()} ${error.stack}`);
-    return {
-      status: 'error',
-      message: `Error generating ${docType}: ${error.message}. Check logs and template/folder permissions.`
-    };
-  }
+  return generateDocumentAndMail(docType, registrationId, sendEmailOption, isAdmin);
 }
 
 
@@ -10349,16 +10190,19 @@ function getStudentCertificate(registrationId) {
       }
     }
     const studentData = getStudentDataForDoc(registrationId);
-    if (studentData && studentData.ApplicationStatus === 'Completed') {
-      return {
-        status: 'no_certificate',
-        message: 'Your internship is completed. Certificate is being processed.'
-      };
-    } else if (studentData && (studentData.ApplicationStatus === 'Approved' || studentData.ApplicationStatus === 'Active')) {
-      return {
-        status: 'no_certificate',
-        message: 'Your internship is ongoing. Certificate will be available upon completion.'
-      };
+    if (studentData) {
+      const sStatus = String(studentData.ApplicationStatus || studentData.Status || '').trim().toLowerCase();
+      if (sStatus === 'completed') {
+        return {
+          status: 'no_certificate',
+          message: 'Your internship is completed. Certificate is being processed.'
+        };
+      } else if (['approved', 'active', 'assigned'].includes(sStatus)) {
+        return {
+          status: 'no_certificate',
+          message: 'Your internship is ongoing. Certificate will be available upon completion.'
+        };
+      }
     }
 
     return {
@@ -10413,8 +10257,9 @@ function getBatches() {
       return {
         id: batch.BatchID,
         name: batch.BatchName,
+        title: batch.BatchTitle || batch.Project || batch.ProjectTitle || batch.Batchtitle || batch.batchTitle || '',
         mentor: batch.Mentor,
-        project: batch.Project || '',
+        project: batch.BatchTitle || batch.Project || batch.ProjectTitle || batch.Batchtitle || batch.batchTitle || '',
         workArea: batch.WorkArea || 'General',
         studentCount: batchStudents.length,
         taskCount: taskCount,
@@ -10455,7 +10300,16 @@ function getBatchOverview(batchName) {
 
     return {
       status: 'success',
-      students: students.map(s => ({ regId: s.RegistrationID, name: getStudentFullName_(s), rfidTag: s.RFID_TagID })),
+      students: students.map(s => ({
+        regId: s.RegistrationID,
+        name: getStudentFullName_(s),
+        rfidTag: s.RFID_TagID,
+        startDate: s.InternshipStartDate ? Utilities.formatDate(new Date(s.InternshipStartDate), Session.getScriptTimeZone(), 'dd-MMM-yyyy') : '',
+        endDate: s.InternshipEndDate ? Utilities.formatDate(new Date(s.InternshipEndDate), Session.getScriptTimeZone(), 'dd-MMM-yyyy') : '',
+        cardAssigned: !!(s.RFID_TagID && String(s.RFID_TagID).trim()),
+        batchName: s.Batch || '',
+        status: s.ApplicationStatus || s.Status || ''
+      })),
       tasks: batchTasks.slice(0, 50),
       projects: batchProjects.slice(0, 50)
     };
@@ -10695,7 +10549,7 @@ function deleteBatchSlotException(exceptionId) {
   }
 }
 
-function updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned) {
+function updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned, batchTitle) {
   try {
     const sheet = getSheet(SHEET_NAMES.BATCHES);
     const data = sheet.getDataRange().getValues();
@@ -10710,6 +10564,7 @@ function updateBatchDetails(id, name, mentor, project, description, workArea, st
 
     const idCol = findCol("BatchID");
     const nameCol = findCol("BatchName");
+    const titleCol = findCol("BatchTitle");
     const mentorCol = findCol("Mentor");
     const projCol = findCol("Project");
     const descCol = findCol("Description");
@@ -10735,6 +10590,7 @@ function updateBatchDetails(id, name, mentor, project, description, workArea, st
         const oldName = data[i][nameCol];
 
         if (nameCol !== -1) sheet.getRange(i + 1, nameCol + 1).setValue(name);
+        if (titleCol !== -1) sheet.getRange(i + 1, titleCol + 1).setValue(batchTitle || '');
         if (mentorCol !== -1) sheet.getRange(i + 1, mentorCol + 1).setValue(mentor);
         if (projCol !== -1) sheet.getRange(i + 1, projCol + 1).setValue(project);
         if (descCol !== -1) sheet.getRange(i + 1, descCol + 1).setValue(description || '');
@@ -10821,7 +10677,7 @@ function updateBatchNameForStudents(oldName, newName) {
   }
 }
 
-function createBatch(batchName, mentorName, projectName, description, workArea, status, skillLearned) {
+function createBatch(batchName, mentorName, projectName, description, workArea, status, skillLearned, batchTitle) {
   try {
     const sheet = getSheet(SHEET_NAMES.BATCHES);
     const headers = sheet.getDataRange().getValues()[0];
@@ -10847,6 +10703,7 @@ function createBatch(batchName, mentorName, projectName, description, workArea, 
 
     setVal("BatchID", newId);
     setVal("BatchName", batchName);
+    setVal("BatchTitle", batchTitle || '');
     setVal("Mentor", mentorName);
     setVal("Project", projectName || '');
     setVal("Description", description || '');
@@ -12571,15 +12428,30 @@ function submitUnifiedStudentRequest(registrationId, requestType, date, reason, 
       return { status: 'error', message: requestType + ' can only be requested for past or current dates.' };
     }
 
-    // Rule 4: Internship Boundary Check (Strict)
+    // Rule 4: Internship Boundary Check with Configurable Grace Periods
+    let startGraceDays = 0;
+    let endGraceDays = 60;
+    try {
+      const settingsRes = getAppSettings();
+      if (settingsRes.status === 'success' && settingsRes.settings) {
+        const sVal = parseInt(settingsRes.settings['InternshipStartGracePeriod']);
+        if (!isNaN(sVal) && sVal >= 0) startGraceDays = sVal;
+        const eVal = parseInt(settingsRes.settings['InternshipEndGracePeriod']);
+        if (!isNaN(eVal) && eVal >= 0) endGraceDays = eVal;
+      }
+    } catch(e) {}
+
     const startBound = parseLocalDate_(student.InternshipStartDate || student.StartDate);
     const endBound = parseLocalDate_(student.InternshipEndDate || student.EndDate);
     if (!startBound || !endBound) {
       return { status: 'error', message: 'Internship boundary dates are missing or invalid.' };
     }
 
-    if (targetDate < startBound || (targetDate > endBound && requestType !== 'Grace Period')) {
-      return { status: 'error', message: `Request date must be within your internship period (${formatDate(startBound)} to ${formatDate(endBound)}).` };
+    const adjustedStart = new Date(startBound.getTime() - startGraceDays * 24 * 60 * 60 * 1000);
+    const adjustedEnd = new Date(endBound.getTime() + endGraceDays * 24 * 60 * 60 * 1000);
+
+    if (targetDate < adjustedStart || (targetDate > adjustedEnd && requestType !== 'Grace Period')) {
+      return { status: 'error', message: `Request date must be within your allowed internship window (from ${formatDate(adjustedStart)} to ${formatDate(adjustedEnd)}).` };
     }
 
     // Rule 4b: Diary Access Request Check (Should not be absent)
@@ -13485,7 +13357,7 @@ function processCorrectionRequestApproval(requestId, action) {
           todayNode.setHours(0, 0, 0, 0);
           const parsedTargetDate = new Date(date);
 
-          if (parsedTargetDate < todayNode || isEarlyExit) {
+          if (parsedTargetDate <= todayNode || isEarlyExit) {
             sheet.getRange(i + 1, statusCol + 1).setValue('Approved');
             // Only update attendance record (Present) for corrections, not early exits.
             if (type === 'Correction') {
@@ -14379,11 +14251,7 @@ function updateStudentProfile(data) {
     if (newTag !== oldTag && data.ApplicationStatus === undefined && data.Status === undefined) {
       const currentAppStatus = String(regData[rowIndex - 1][regHeaders.indexOf('ApplicationStatus')] || '').trim().toLowerCase();
       if (newTag) {
-        // Card being assigned — update status to 'Assigned'
-        if (currentAppStatus === 'approved' || currentAppStatus === 'active') {
-          data.ApplicationStatus = 'Assigned';
-          data.Status = 'Assigned';
-        }
+        // Card being assigned — do NOT change status to 'Assigned' anymore. Keep 'Approved' or 'Active'.
       } else {
         // Card being cleared — revert status from 'Assigned' back to 'Approved'
         if (currentAppStatus === 'assigned') {
@@ -15119,8 +14987,8 @@ function getStudentComprehensiveProfile(regId) {
         other: !!findValue(d, "Other")
       },
       permissions: {
-        attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE'),
-        diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE')
+        attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(details.registrationId).includes('attendance'),
+        diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(details.registrationId).includes('diary')
       },
       rfidTag: d["RFID_TagID"] || '',
       certificateIssued: !!(d["CertificateLink"] || d["CertificateIssuedDate"])
@@ -15278,7 +15146,7 @@ function getStudentComprehensiveProfile(regId) {
         endDate: details.InternshipEndDate,
         durationDays: details.durationDays || 0,
         daysRemaining: details.endDate ? Math.max(0, Math.ceil((new Date(details.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
-        isActive: details.status === 'approved' || details.status === 'active',
+        isActive: details.status === 'approved' || details.status === 'active' || details.status === 'assigned',
         overallHealthScore: 0 // Calculated below
       }
     };
@@ -15578,12 +15446,13 @@ function saveDiaryEntry(regId, dateStr, content) {
     if (!student) return { status: 'error', message: 'Student not found.' };
 
     // Restriction: Completed students
-    if (String(student.ApplicationStatus).toLowerCase() === 'completed') {
+    const studentStatusStr = String(student.ApplicationStatus || student.Status || '').toLowerCase();
+    if (studentStatusStr === 'completed') {
       return { status: 'error', message: 'Internship completed. Diary is now in View-Only mode.' };
     }
 
-    if (student.ApplicationStatus !== 'Approved' && student.ApplicationStatus !== 'Active') {
-      return { status: 'error', message: 'Diary entry only allowed for Approved/Active students.' };
+    if (studentStatusStr !== 'approved' && studentStatusStr !== 'active' && studentStatusStr !== 'assigned') {
+      return { status: 'error', message: 'Diary entry only allowed for Approved/Active/Assigned students.' };
     }
 
     // 2. Date Parsing
@@ -16313,7 +16182,7 @@ function getStudentFiles(regId) {
     if (!rId) return { status: 'error', message: 'No registration ID provided' };
 
     const result = [];
-    const mandatoryTypes = ["Bonafide", "Declaration", "College ID", "Other Doc"];
+    const mandatoryTypes = ["Bonafide", "Declaration", "College ID"];
 
     // Helper to format date safely to ISO string
     const safeFmtDate = (d) => {
@@ -17289,6 +17158,41 @@ function processGracePeriodApproval(requestId, action, optData = {}) {
     return { status: 'error', message: e.toString() };
   }
 }
+
+function getApprovedGracePeriodAreas(regId, checkDateStr = null) {
+  try {
+    const checkDate = checkDateStr ? new Date(checkDateStr) : new Date();
+    checkDate.setHours(0, 0, 0, 0);
+
+    const sheet = getSheet(SHEET_NAMES.ATTENDANCE_OTP);
+    if (!sheet) return [];
+    const data = getSheetDataAsObjects(sheet);
+    
+    const activeGP = data.find(r => {
+      if (String(r.RegistrationID || "").trim().toLowerCase() !== String(regId || "").trim().toLowerCase()) return false;
+      if (String(r.Status || "").trim() !== 'Approved') return false;
+      if (String(r.ActionType || "").trim() !== 'GracePeriod') return false;
+      
+      const startDate = r.TargetDate ? new Date(r.TargetDate) : null;
+      const endDate = r.ExpiryTimestamp ? new Date(r.ExpiryTimestamp) : null;
+      if (!startDate || !endDate) return false;
+      
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(0, 0, 0, 0);
+      
+      return checkDate >= startDate && checkDate <= endDate;
+    });
+
+    if (activeGP && activeGP.LeaveType) {
+      return String(activeGP.LeaveType).split(',').map(s => s.trim().toLowerCase());
+    }
+    return [];
+  } catch (e) {
+    Logger.log("Error in getApprovedGracePeriodAreas: " + e.toString());
+    return [];
+  }
+}
+
 // --- RFID AUTOMATION HELPERS ---
 
 /**
@@ -18378,6 +18282,33 @@ function calculateDynamicDuration(s) {
 
 function generateAcknowledgementPdf(registrationId) {
   try {
+    // Check if acknowledgement already exists in FILE_MANAGER
+    const fmSheet = getSheet(SHEET_NAMES.FILE_MANAGER);
+    if (fmSheet) {
+      const fmData = fmSheet.getDataRange().getValues();
+      const fmRegCol = fmData[0].indexOf("StudentRegistrationID");
+      const fmTypeCol = fmData[0].indexOf("DocType");
+      const fmIdCol = fmData[0].indexOf("FileId");
+      if (fmRegCol !== -1 && fmTypeCol !== -1 && fmIdCol !== -1) {
+        for (let i = 1; i < fmData.length; i++) {
+          if (String(fmData[i][fmRegCol]).toUpperCase() === String(registrationId).toUpperCase() && fmData[i][fmTypeCol] === 'Acknowledgement') {
+            const fileId = fmData[i][fmIdCol];
+            if (fileId && fileId.toString().trim() !== '') {
+              try {
+                const file = DriveApp.getFileById(fileId.toString().trim());
+                if (!file.isTrashed()) {
+                  Logger.log(`Found existing Acknowledgement PDF for ${registrationId}. Reusing: ${file.getUrl()}`);
+                  return { status: 'success', fileId: file.getId(), url: file.getUrl(), message: 'Acknowledgement fetched from existing records.' };
+                }
+              } catch (e) {
+                Logger.log(`Existing Acknowledgement file ID ${fileId} not accessible: ${e.toString()}`);
+              }
+            }
+          }
+        }
+      }
+    }
+
     const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
     const students = getSheetDataAsObjects(regSheet);
     const stu = students.find(function (s) { return s.RegistrationID === registrationId; });
@@ -18481,7 +18412,6 @@ function generateAcknowledgementPdf(registrationId) {
     const folder = DriveApp.getFolderById(getSystemFolderId('uploads'));
     const file = folder.createFile(blob);
 
-    const fmSheet = getSheet(SHEET_NAMES.FILE_MANAGER);
     if (fmSheet) {
       fmSheet.appendRow([file.getId(), registrationId, blob.getName(), file.getUrl(), 'Acknowledgement', new Date(), file.getSize(), 'Active']);
     }
@@ -19373,7 +19303,7 @@ function timeToMinutes(timeStr) {
 function getSlotTiming(batchId, targetDateStr, regId = '') {
   try {
     const defaultStart = "09:00 AM", defaultEnd = "05:00 PM";
-    const fallback = { start: defaultStart, end: defaultEnd, lateAfter: defaultStart, earlyBefore: defaultEnd, rfidEnabled: false, graceLate: 60, graceEarly: 0, enabled: true, mode: 'manual', source: 'fallback' };
+    const fallback = { start: defaultStart, end: defaultEnd, lateAfter: defaultStart, earlyBefore: defaultEnd, rfidEnabled: false, graceLate: 60, graceEarly: 60, enabled: true, mode: 'manual', source: 'fallback' };
     const clean = (v) => String(v || '').replace(/^'/, '');
     const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
     const today = targetDateStr || Utilities.formatDate(new Date(), zone, "yyyy-MM-dd");
@@ -19408,6 +19338,11 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
       else if (!isTiming && isRfid) slotMode = 'rfid_only';
       else if (isTiming && !isRfid) slotMode = 'manual_only';
 
+      let gLate = parseInt(slot.rfid_grace_late || slot.GraceLate || slot.rfid_grace_late || 0);
+      let gEarly = parseInt(slot.rfid_grace_early || slot.GraceEarly || slot.rfid_grace_early || 0);
+      if (isNaN(gLate) || gLate === 0) gLate = 60;
+      if (isNaN(gEarly) || gEarly === 0) gEarly = 60;
+
       return {
         start: clean(slot.start_time) || defaultStart,
         end: clean(slot.end_time) || defaultEnd,
@@ -19415,8 +19350,8 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
         earlyBefore: clean(slot.early_exit_before) || clean(slot.end_time) || defaultEnd,
         rfidEnabled: isRfid,
         manualEnabled: isTiming,
-        graceLate: 60, // 1 hour late grace period
-        graceEarly: 0,  // No early checkout grace constraint
+        graceLate: gLate,
+        graceEarly: gEarly,
         enabled: isTiming || isRfid,
         mode: slotMode,
         source: source,
@@ -19459,7 +19394,7 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
               return {
                 start: clean(slot.StartTime) || defaultStart, end: clean(slot.EndTime) || defaultEnd,
                 lateAfter: clean(slot.StartTime) || defaultStart, earlyBefore: clean(slot.EndTime) || defaultEnd,
-                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 0, enabled: true, mode: 'both', source: 'batch_slot',
+                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 60, enabled: true, mode: 'both', source: 'batch_slot',
                 type: 'BATCH_LEGACY_SLOT'
               };
             }
@@ -19497,7 +19432,7 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
               return {
                 start: clean(exc.StartTime || exc.TempStart) || defaultStart, end: clean(exc.EndTime || exc.TempEnd) || defaultEnd,
                 lateAfter: clean(exc.StartTime || exc.TempStart) || defaultStart, earlyBefore: clean(exc.EndTime || exc.TempEnd) || defaultEnd,
-                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 0, enabled: true, mode: 'both', source: 'batch_exception',
+                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 60, enabled: true, mode: 'both', source: 'batch_exception',
                 type: 'BATCH_LEGACY_EXCEPTION'
               };
             }
@@ -19673,7 +19608,10 @@ function recordWebCheckin(regId) {
       return { status: 'error', message: `Internship has not started yet. (Start: ${formatDateSafe(sdRaw)})` };
     }
     if (ed && now > new Date(ed).setHours(0, 0, 0, 0)) {
-      return { status: 'error', message: 'Internship period has expired.' };
+      const gpAreas = getApprovedGracePeriodAreas(regId);
+      if (!gpAreas.includes('attendance')) {
+        return { status: 'error', message: 'Internship period has expired.' };
+      }
     }
 
     const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
@@ -19858,7 +19796,7 @@ function processAttendanceRequest(requestId, newStatus, adminComment = '') {
         const slot = getSlotTiming(batchId, getTodayStr());
         updateObjectInSheet(attSheet, "AttendanceID", current.record.AttendanceID, { OutTime: slot.end });
       } else if (req.Type === "PIN_CHECKIN" || req.Type === "MANUAL_CHECKIN" || req.Type === "LATE_CHECKIN") {
-        const attendanceStatus = req.Type === "LATE_CHECKIN" ? 'Late with Present' : 'Present';
+        const attendanceStatus = req.Type === "LATE_CHECKIN" ? 'Late' : 'Present';
         const entryMode = req.Type === "LATE_CHECKIN" ? 'RFID' : 'Manual';
         appendObjectToSheet(attSheet, {
           AttendanceID: "ATT_" + Date.now(),
@@ -20052,6 +19990,32 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
       }
     }
 
+    // 1.6. Check if internship has ended
+    if (student.InternshipEndDate) {
+      const endDate = new Date(student.InternshipEndDate);
+      if (!isNaN(endDate.getTime())) {
+        const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const endOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        if (todayOnly > endOnly) {
+          const gpAreas = getApprovedGracePeriodAreas(regId);
+          if (!gpAreas.includes('attendance')) {
+            logDeviceEvent(deviceMac, 'RFID_Scan_Fail', `Student: ${studentName} (${regId}) - Internship Ended`);
+            logDeniedAttendance(regId, studentName, 'Internship Ended', deviceMac);
+            return {
+              status: 'error',
+              name: studentName,
+              regId: regId,
+              college: collegeName,
+              slotTiming: slotTimingStr,
+              batch: batchId,
+              message: 'Internship Ended',
+              detailStatus: 'Internship Ended'
+            };
+          }
+        }
+      }
+    }
+
     // 1b. Check if attendance access is unlocked
     const attAccess = student.AttendanceAccess;
     const isUnlocked = (attAccess !== false && attAccess !== 'FALSE' && String(attAccess).trim().toUpperCase() !== 'FALSE');
@@ -20143,10 +20107,8 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
         };
       }
 
-      const checkinGraceBefore = 60; // 1 hour grace before slot start
-      const checkinGraceAfter = 60;  // 1 hour grace after slot start
-      const tooEarlyLimit = slotStartMins - checkinGraceBefore;
-      const tooLateLimit = slotStartMins + checkinGraceAfter;
+      const earlyLimitMins = slot.rfidEnabled ? 120 : 60;
+      const tooEarlyLimit = slotStartMins - earlyLimitMins;
 
       // Checkin limits: Too Early Check
       if (nowMins < tooEarlyLimit) {
@@ -20165,8 +20127,8 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
         };
       }
 
-      // Checkin limits: Too Late Check (Slot Time Over)
-      if (nowMins > tooLateLimit) {
+      // Checkin limits: Too Late Check (Blocked only if scanned past slot end time)
+      if (nowMins > slotEndMins) {
         logDeviceEvent(deviceMac, 'RFID_CheckIn_Fail', `Student: ${studentName} (${regId}) - Late check-in (Slot Over)`);
         logDeniedAttendance(regId, studentName, 'Late Arrival: Slot Over', deviceMac);
         return { 
@@ -20201,8 +20163,10 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
 
       // Determine check-in path (Direct vs Request)
       let lateMins = timeToMinutes(slot.lateAfter);
+      const graceLate = slot.rfidEnabled ? parseInt(slot.graceLate || 0) : 0;
+      const directCheckinLimit = lateMins + graceLate;
       
-      if (nowMins > lateMins) {
+      if (nowMins > directCheckinLimit) {
         // LATE CHECKIN PATH: Create request in Admin Panel
         
         // 1. Check if a request already exists for today to prevent duplicates
@@ -20231,7 +20195,7 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
         }
         
         // 2. Submit the late request
-        const reason = `RFID Late Check-in at ${nowStr} (Slot: ${slotTimingStr})`;
+        const reason = `RFID Late Check-in at ${nowStr} (Slot: ${slotTimingStr} - Past Grace: ${slot.graceLate}m)`;
         const reqResult = submitAttendanceRequest(regId, 'LATE_CHECKIN', reason, today, nowStr);
         
         if (reqResult.status === 'success') {
@@ -20257,23 +20221,24 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
           };
         }
       } else {
-        // IN-TIME CHECKIN PATH: Mark Present directly
+        // DIRECT CHECKIN PATH: Mark Present or Late with Present directly depending on slot.lateAfter
+        const isLate = nowMins > lateMins;
         const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
         appendObjectToSheet(sheet, {
           AttendanceID: "ATT_" + Date.now(),
           StudentRegistrationID: regId,
           StudentName: studentName,
           Date: today,
-          Status: 'Present',
+          Status: isLate ? 'Late with Present' : 'Present',
           InTime: nowStr,
           OutTime: "",
           EntryMode: "RFID",
           checkin_source: "RFID",
-          late_flag: false,
+          late_flag: isLate,
           Timestamp: new Date().toISOString()
         });
         
-        logDeviceEvent(deviceMac, 'RFID_CheckIn', `Student: ${studentName} (${regId}) - Checked In (IN-TIME)`);
+        logDeviceEvent(deviceMac, 'RFID_CheckIn', `Student: ${studentName} (${regId}) - Checked In (${isLate ? 'LATE' : 'IN-TIME'})`);
         
         return { 
           status: 'success', 
@@ -20284,8 +20249,8 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
           slotTiming: slotTimingStr,
           batch: batchId,
           time: nowStr,
-          detailStatus: 'Present',
-          message: (student.FirstName || '') + ': IN-TIME' 
+          detailStatus: isLate ? 'Late' : 'Present',
+          message: (student.FirstName || '') + (isLate ? ': LATE' : ': IN-TIME') 
         };
       }
 
@@ -20333,25 +20298,80 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
         };
       }
 
+      // Validate early checkout window
+      const graceEarly = slot.rfidEnabled ? parseInt(slot.graceEarly || 0) : 0;
+      const earlyCheckoutLimit = slotEndMins - graceEarly;
 
+      if (nowMins < earlyCheckoutLimit) {
+        // EARLY CHECKOUT: Submit request for Admin Approval
+        const reqSheet = getSheet(SHEET_NAMES.ATTENDANCE_REQUESTS);
+        const requests = getSheetDataAsObjects(reqSheet) || [];
+        const hasPendingRequest = requests.some(r => 
+          String(r.RegistrationID).trim().toLowerCase() === regId.toLowerCase() &&
+          String(r.Date).trim() === today &&
+          String(r.Status).trim().toLowerCase() === 'pending' &&
+          String(r.Type).trim() === 'EARLY_EXIT'
+        );
+        
+        if (hasPendingRequest) {
+          logDeviceEvent(deviceMac, 'RFID_CheckOut_Fail', `Student: ${studentName} (${regId}) - Duplicate early checkout request`);
+          return { 
+            status: 'error', 
+            name: studentName, 
+            regId: regId,
+            college: collegeName,
+            slotTiming: slotTimingStr,
+            batch: batchId,
+            message: 'Req Already Sent',
+            detailStatus: 'Request Pending'
+          };
+        }
 
-      const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
-      updateObjectInSheet(sheet, "AttendanceID", current.record.AttendanceID, { OutTime: nowStr });
-      
-      logDeviceEvent(deviceMac, 'RFID_CheckOut', `Student: ${studentName} (${regId}) - Checked Out`);
+        const reason = `RFID Early Checkout at ${nowStr} (Before ${slot.end} - Grace: ${slot.graceEarly}m)`;
+        const reqResult = submitAttendanceRequest(regId, 'EARLY_EXIT', reason, today, nowStr);
 
-      return { 
-        status: 'success', 
-        name: studentName,
-        regId: regId,
-        regNo: String(student.RegisterNumber || student.registerNumber || student["Register Number"] || 'N/A'),
-        college: collegeName,
-        slotTiming: slotTimingStr,
-        batch: batchId,
-        time: nowStr,
-        detailStatus: 'Checked Out',
-        message: (student.FirstName || '') + ': Checked Out' 
-      };
+        if (reqResult.status === 'success') {
+          logDeviceEvent(deviceMac, 'RFID_EarlyCheckout_Request', `Student: ${studentName} (${regId}) - Early Checkout Request Submitted`);
+          return {
+            status: 'success', // Return success to hardware so it shows confirmation
+            name: studentName,
+            regId: regId,
+            regNo: String(student.RegisterNumber || student.registerNumber || student["Register Number"] || 'N/A'),
+            college: collegeName,
+            slotTiming: slotTimingStr,
+            batch: batchId,
+            time: nowStr,
+            detailStatus: 'Request Pending',
+            message: 'Req Submitted'
+          };
+        } else {
+          return {
+            status: 'error',
+            name: studentName,
+            message: 'Failed to submit request',
+            detailStatus: 'System Error'
+          };
+        }
+      } else {
+        // On-time checkout
+        const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
+        updateObjectInSheet(sheet, "AttendanceID", current.record.AttendanceID, { OutTime: nowStr });
+        
+        logDeviceEvent(deviceMac, 'RFID_CheckOut', `Student: ${studentName} (${regId}) - Checked Out`);
+
+        return { 
+          status: 'success', 
+          name: studentName,
+          regId: regId,
+          regNo: String(student.RegisterNumber || student.registerNumber || student["Register Number"] || 'N/A'),
+          college: collegeName,
+          slotTiming: slotTimingStr,
+          batch: batchId,
+          time: nowStr,
+          detailStatus: 'Checked Out',
+          message: (student.FirstName || '') + ': Checked Out' 
+        };
+      }
     } else {
       return { status: 'error', name: studentName, regId: regId, college: collegeName, slotTiming: slotTimingStr, batch: batchId, message: 'Unknown Action: ' + action, detailStatus: 'Unknown Action' };
     }
@@ -20550,6 +20570,46 @@ function getSlotTimingsList() {
     };
   });
 
+  // Deduplicate SLOT_SETTINGS entries by _id (type+batch+target).
+  // Duplicate rows can exist from an old bug that created new rows instead of updating.
+  // Keep whichever row has the most recently created_at; if equal prefer the one with more data.
+  const deduped = {};
+  unified.forEach(s => {
+    const key = String(s._id || '').replace(/\s+/g, '').toUpperCase();
+    if (!deduped[key]) {
+      deduped[key] = s;
+    } else {
+      const existingDate = new Date(deduped[key].created_at || 0).getTime();
+      const currentDate  = new Date(s.created_at || 0).getTime();
+      // Score = count of non-empty meaningful fields
+      const score = e => [e.late_after, e.early_exit_before, e.rfid_grace_late, e.rfid_grace_early]
+                          .filter(v => v && String(v).trim()).length;
+      if (currentDate > existingDate || (currentDate === existingDate && score(s) > score(deduped[key]))) {
+        deduped[key] = s;
+      }
+    }
+  });
+  unified = Object.values(deduped);
+
+
+  // Build a lookup map: batch name (lowercased) → timing extras from SLOT_SETTINGS BATCH entries
+  // This allows legacy batch slots to display late_after/early_exit_before/grace values
+  // that were saved when admin edited the legacy slot via the settings panel.
+  const batchTimingMap = {};
+  unified.forEach(u => {
+    if (u.type === 'BATCH' && u.batch) {
+      const key = String(u.batch).trim().toLowerCase();
+      batchTimingMap[key] = {
+        late_after: u.late_after || '',
+        early_exit_before: u.early_exit_before || '',
+        rfid_enabled: u.rfid_enabled || false,
+        rfid_grace_late: u.rfid_grace_late || '',
+        rfid_grace_early: u.rfid_grace_early || '',
+        mode: u.mode || 'manual'
+      };
+    }
+  });
+
   // Append legacy Batch slots to unified view
   try {
     const slotsSheet = getSheet(SHEET_NAMES.SLOTS);
@@ -20557,6 +20617,7 @@ function getSlotTimingsList() {
       const slots = getSheetDataAsObjects(slotsSheet);
       slots.forEach(s => {
         const batchName = resolveBatchNameToName(s.BatchID);
+        const extras = batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
         unified.push({
           _source: 'SLOTS',
           _id: s.SlotID,
@@ -20565,10 +20626,13 @@ function getSlotTimingsList() {
           batch: batchName,
           start_time: String(s.StartTime || '').replace(/^'/, ''),
           end_time: String(s.EndTime || '').replace(/^'/, ''),
-          late_after: '', early_exit_before: '',
+          late_after: extras.late_after || '',
+          early_exit_before: extras.early_exit_before || '',
           enabled: s.Status === 'Active',
-          rfid_enabled: false,
-          mode: 'manual',
+          rfid_enabled: extras.rfid_enabled || false,
+          mode: extras.rfid_enabled ? 'both' : 'manual',
+          rfid_grace_late: extras.rfid_grace_late || '',
+          rfid_grace_early: extras.rfid_grace_early || '',
           applicable_for: 'batch_slot', applicable_target: s.Label || '',
           created_at: '', created_at_formatted: '',
           validity_days: '', expired: false, expiry_formatted: '', remaining_days: -1
@@ -20582,6 +20646,7 @@ function getSlotTimingsList() {
         const batchName = resolveBatchNameToName(s.BatchID);
         const targetDate = String(s.TargetDate || s.Date || '');
         const isExcExpired = targetDate && targetDate < todayStr;
+        const extras = batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
         unified.push({
           _source: 'SLOT_EXCEPTIONS',
           _id: s.ExceptionID,
@@ -20590,10 +20655,13 @@ function getSlotTimingsList() {
           batch: batchName,
           start_time: String(s.StartTime || s.TempStart || '').replace(/^'/, ''),
           end_time: String(s.EndTime || s.TempEnd || '').replace(/^'/, ''),
-          late_after: '', early_exit_before: '',
+          late_after: extras.late_after || '',
+          early_exit_before: extras.early_exit_before || '',
           enabled: (s.Status === 'Active') && !isExcExpired,
-          rfid_enabled: false,
-          mode: 'manual',
+          rfid_enabled: extras.rfid_enabled || false,
+          mode: extras.rfid_enabled ? 'both' : 'manual',
+          rfid_grace_late: extras.rfid_grace_late || '',
+          rfid_grace_early: extras.rfid_grace_early || '',
           applicable_for: 'date_exception',
           applicable_target: targetDate + (s.Label ? ' - ' + s.Label : (s.Type ? ' - ' + s.Type : '')),
           created_at: '', created_at_formatted: '',
@@ -20606,6 +20674,7 @@ function getSlotTimingsList() {
 
   return unified;
 }
+
 
 function deleteUnifiedSlot(source, id) {
   if (source === 'SLOTS') return deleteBatchSlot(id);
@@ -20651,13 +20720,66 @@ function toggleUnifiedSlotStatus(source, id, newState, slotData) {
 
 function saveNewSlotTiming(data) {
   try {
+    const forceText = (v) => v ? "'" + String(v).replace(/^'/, '') : '';
+    const cleanTime = (v) => String(v || '').replace(/^'/, '');
+
+    if (data._source === 'SLOTS') {
+      const slotsSheet = getSheet(SHEET_NAMES.SLOTS);
+      if (!slotsSheet) return { status: 'error', message: 'Slots sheet not found' };
+      const sData = slotsSheet.getDataRange().getValues();
+      const idCol = sData[0].indexOf("SlotID") + 1;
+      let startCol = sData[0].indexOf("StartTime") + 1;
+      if (startCol <= 0) startCol = sData[0].indexOf("TempStart") + 1;
+      let endCol = sData[0].indexOf("EndTime") + 1;
+      if (endCol <= 0) endCol = sData[0].indexOf("TempEnd") + 1;
+      const statusCol = sData[0].indexOf("Status") + 1;
+      const labelCol = sData[0].indexOf("Label") + 1;
+      
+      if (idCol > 0) {
+        for (let i = 1; i < sData.length; i++) {
+          if (String(sData[i][idCol - 1]) === String(data._id)) {
+            if (startCol > 0) slotsSheet.getRange(i + 1, startCol).setValue(forceText(cleanTime(data.start_time)));
+            if (endCol > 0) slotsSheet.getRange(i + 1, endCol).setValue(forceText(cleanTime(data.end_time)));
+            if (statusCol > 0) slotsSheet.getRange(i + 1, statusCol).setValue(data.enabled ? 'Active' : 'Inactive');
+            if (labelCol > 0 && data.applicable_target) slotsSheet.getRange(i + 1, labelCol).setValue(data.applicable_target);
+            SpreadsheetApp.flush();
+            executionCache.delete(SHEET_NAMES.SLOTS);
+            return { status: 'success', message: 'Legacy Slot configuration updated successfully.' };
+          }
+        }
+      }
+      return { status: 'error', message: 'Legacy Slot not found for updating.' };
+    }
+
+    if (data._source === 'SLOT_EXCEPTIONS') {
+      const excSheet = getSheet(SHEET_NAMES.SLOT_EXCEPTIONS);
+      if (!excSheet) return { status: 'error', message: 'SlotExceptions sheet not found' };
+      const eData = excSheet.getDataRange().getValues();
+      const idCol = eData[0].indexOf("ExceptionID") + 1;
+      let startCol = eData[0].indexOf("StartTime") + 1;
+      if (startCol <= 0) startCol = eData[0].indexOf("TempStart") + 1;
+      let endCol = eData[0].indexOf("EndTime") + 1;
+      if (endCol <= 0) endCol = eData[0].indexOf("TempEnd") + 1;
+      const statusCol = eData[0].indexOf("Status") + 1;
+      
+      if (idCol > 0) {
+        for (let i = 1; i < eData.length; i++) {
+          if (String(eData[i][idCol - 1]) === String(data._id)) {
+            if (startCol > 0) excSheet.getRange(i + 1, startCol).setValue(forceText(cleanTime(data.start_time)));
+            if (endCol > 0) excSheet.getRange(i + 1, endCol).setValue(forceText(cleanTime(data.end_time)));
+            if (statusCol > 0) excSheet.getRange(i + 1, statusCol).setValue(data.enabled ? 'Active' : 'Inactive');
+            SpreadsheetApp.flush();
+            executionCache.delete(SHEET_NAMES.SLOT_EXCEPTIONS);
+            return { status: 'success', message: 'Legacy Exception configuration updated successfully.' };
+          }
+        }
+      }
+      return { status: 'error', message: 'Legacy Exception not found for updating.' };
+    }
+
     const sheet = getSheet(SHEET_NAMES.SLOT_SETTINGS);
     const historySheet = getSheet(SHEET_NAMES.SLOT_TIMING_HISTORY);
     if (!sheet) return { status: 'error', message: 'Slot Settings sheet not found' };
-
-    // Force time values as text to prevent Google Sheets Date interpretation
-    const forceText = (v) => v ? "'" + String(v).replace(/^'/, '') : '';
-    const cleanTime = (v) => String(v || '').replace(/^'/, '');
 
     const settings = getSheetDataAsObjects(sheet);
     let existingIndex = -1;
@@ -20668,25 +20790,45 @@ function saveNewSlotTiming(data) {
     let targetApplicableFor = String(data.applicable_for || '').trim();
     let targetApplicableTarget = String(data.applicable_target || '').trim();
 
+    const norm = (str) => String(str || '').replace(/\s+/g, '').toUpperCase();
+    let normType = norm(data.type || 'DEFAULT');
+    let normBatch = norm(data.batch || '');
+    let normFor = norm(data.applicable_for || '');
+    let normTarget = norm(data.applicable_target || '');
+
     // Match Logic for updating vs creating
     for (let i = 0; i < settings.length; i++) {
       let s = settings[i];
-      let sType = String(s.type || s.Type || 'DEFAULT').toUpperCase();
-      let sBatch = String(s.batch || s.Batch || '').trim();
-      let sTarget = String(s.applicable_target || s.ApplicableTarget || s.applicableTarget || '').trim();
-      let sFor = String(s.applicable_for || s.ApplicableFor || '').trim();
+      let sType = norm(s.type || s.Type || 'DEFAULT');
+      let sBatch = norm(s.batch || s.Batch || '');
+      let sTarget = norm(s.applicable_target || s.ApplicableTarget || s.applicableTarget || '');
+      let sFor = norm(s.applicable_for || s.ApplicableFor || '');
 
       // Special Case: DEFAULT is unique system-wide
-      if (targetType === 'DEFAULT' && sType === 'DEFAULT') {
+      if (normType === 'DEFAULT' && sType === 'DEFAULT') {
         existingIndex = i;
         existingEntry = s;
         break;
       }
 
-      if (sType === targetType &&
-        sBatch === targetBatch &&
-        sFor === targetApplicableFor &&
-        sTarget === targetApplicableTarget
+      // BATCH type: uniquely identified by type + batch only (applicable_for not used)
+      if (normType === 'BATCH' && sType === 'BATCH' && sBatch === normBatch) {
+        existingIndex = i;
+        existingEntry = s;
+        break;
+      }
+
+      // STUDENT type: uniquely identified by type + applicable_target
+      if (normType === 'STUDENT' && sType === 'STUDENT' && sTarget === normTarget) {
+        existingIndex = i;
+        existingEntry = s;
+        break;
+      }
+
+      // SPECIAL type: match on type + applicable_for + applicable_target (or batch for batch-type specials)
+      if (sType === normType &&
+        sFor === normFor &&
+        sTarget === normTarget
       ) {
         existingIndex = i;
         existingEntry = s;
@@ -20756,6 +20898,50 @@ function saveNewSlotTiming(data) {
         }
       }
       SpreadsheetApp.flush();
+      executionCache.delete(SHEET_NAMES.SLOT_SETTINGS);
+
+      // Auto-cleanup: remove any duplicate rows with the same key left over from the old buggy code.
+      // Read fresh from sheet (cache was just cleared above).
+      try {
+        const freshRows = sheet.getDataRange().getValues();
+        const fh = freshRows[0];
+        const fTypeCol = fh.indexOf('type');
+        const fBatchCol = fh.indexOf('batch');
+        const fTargetCol = fh.indexOf('applicable_target');
+        const fForCol = fh.indexOf('applicable_for');
+        const rowsToDelete = [];
+        const norm = (str) => String(str || '').replace(/\s+/g, '').toUpperCase();
+        const normType = norm(targetType);
+        const normBatch = norm(targetBatch);
+        const normTarget = norm(targetApplicableTarget);
+        const normFor = norm(targetApplicableFor);
+
+        for (let r = 1; r < freshRows.length; r++) {
+          const sheetRow1Based = r + 1;
+          if (sheetRow1Based === rowToUpdate) continue; // skip the row we just updated
+          const rType = norm(freshRows[r][fTypeCol] || '');
+          const rBatch = norm(freshRows[r][fBatchCol] || '');
+          const rTarget = norm(freshRows[r][fTargetCol] || '');
+          const rFor = norm(freshRows[r][fForCol] || '');
+          let isDup = false;
+          if (normType === 'DEFAULT' && rType === 'DEFAULT') isDup = true;
+          if (normType === 'BATCH' && rType === 'BATCH' && rBatch === normBatch) isDup = true;
+          if (normType === 'STUDENT' && rType === 'STUDENT' && rTarget === normTarget) isDup = true;
+          if (normType === 'SPECIAL' && rType === 'SPECIAL' && rFor === normFor && rTarget === normTarget) isDup = true;
+          if (isDup) rowsToDelete.push(sheetRow1Based);
+        }
+        // Delete from bottom to top to avoid row-shift issues
+        for (let d = rowsToDelete.length - 1; d >= 0; d--) {
+          sheet.deleteRow(rowsToDelete[d]);
+        }
+        if (rowsToDelete.length > 0) {
+          SpreadsheetApp.flush();
+          executionCache.delete(SHEET_NAMES.SLOT_SETTINGS);
+          Logger.log('Cleaned up ' + rowsToDelete.length + ' duplicate slot_settings row(s) for ' + targetType + ' / ' + targetBatch);
+        }
+      } catch (cleanupErr) {
+        Logger.log('Duplicate cleanup skipped: ' + cleanupErr.toString());
+      }
 
       // Write history record
       if (historySheet) {
@@ -20801,6 +20987,8 @@ function saveNewSlotTiming(data) {
         history_id: historyId,
         validity_days: data.validity_days || ''
       });
+      SpreadsheetApp.flush();
+      executionCache.delete(SHEET_NAMES.SLOT_SETTINGS);
 
       // Write history record
       if (historySheet) {
@@ -20867,6 +21055,7 @@ function deleteSlotTimingByRow(rowNumber) {
     }
 
     sheet.deleteRow(rowNumber);
+    executionCache.delete(SHEET_NAMES.SLOT_SETTINGS);
     return { status: 'success', message: 'Slot timing deleted' };
   } catch (e) {
     return { status: 'error', message: e.toString() };
@@ -21112,7 +21301,7 @@ function searchStudentsForSlot(query) {
   data.forEach(d => {
     // Rule: Only Approved and Not Expired
     const statusLower = String(d.ApplicationStatus || d.Status || '').toLowerCase();
-    const isApproved = (statusLower === 'approved' || statusLower === 'active');
+    const isApproved = (statusLower === 'approved' || statusLower === 'active' || statusLower === 'assigned');
     if (!isApproved) return;
 
     const ed = d.InternshipEndDate ? formatDate(d.InternshipEndDate) : '';
@@ -22773,6 +22962,131 @@ function getMyBatchMembers(regId) {
   } catch (e) {
     Logger.log('Error in getMyBatchMembers: ' + e.toString());
     return { status: 'error', message: e.message };
+  }
+}
+
+function checkAndCloseBatchSlots(batchId) {
+  try {
+    if (!batchId) return;
+    const normBid = String(batchId).trim().replace(/\s+/g, '').toUpperCase();
+    if (!normBid) return;
+
+    // 1. Get all students of this batch
+    const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
+    if (!regSheet) return;
+    const regData = getSheetDataAsObjects(regSheet);
+    
+    // Filter students belonging to this batch
+    const batchStudents = regData.filter(s => {
+      const sBatch = String(s.Batch || '').trim().replace(/\s+/g, '').toUpperCase();
+      const sRegId = String(s.RegistrationID || '').trim();
+      const status = String(s.ApplicationStatus || s.Status || '').trim().toLowerCase();
+      // Only check approved/active students
+      return sRegId && sBatch === normBid && (status === 'approved' || status === 'active' || status === 'assigned');
+    });
+
+    if (batchStudents.length === 0) return;
+
+    // 2. Get all generated certificates
+    const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
+    if (!docSheet) return;
+    const docData = getSheetDataAsObjects(docSheet);
+    
+    // Set of students who have generated certificates
+    const certifiedStudents = new Set();
+    docData.forEach(d => {
+      const type = String(d.DocType || '').trim();
+      if (type === 'internshipCertificate' || type === 'completionCertificate') {
+        const sRegId = String(d.StudentRegistrationID || '').trim().toUpperCase();
+        if (sRegId) certifiedStudents.add(sRegId);
+      }
+    });
+
+    // Check if every student in the batch has a certificate
+    const allCertified = batchStudents.every(s => certifiedStudents.has(String(s.RegistrationID).trim().toUpperCase()));
+    if (!allCertified) {
+      Logger.log(`Batch ${batchId}: Not all students are certified yet.`);
+      return;
+    }
+
+    Logger.log(`Batch ${batchId}: All students are certified. Closing active configurations.`);
+
+    // 3. Deactivate modern slot settings
+    const settingsSheet = getSheet(SHEET_NAMES.SLOT_SETTINGS);
+    if (settingsSheet) {
+      const headers = settingsSheet.getRange("1:1").getValues()[0];
+      const typeCol = headers.indexOf("type") + 1;
+      const appForCol = headers.indexOf("applicable_for") + 1;
+      const batchCol = headers.indexOf("batch") + 1;
+      const appTargetCol = headers.indexOf("applicable_target") + 1;
+      const enabledCol = headers.indexOf("enabled") + 1;
+      const rfidCol = headers.indexOf("rfid_enabled") + 1;
+      
+      const sData = settingsSheet.getDataRange().getValues();
+      for (let i = 1; i < sData.length; i++) {
+        const type = String(sData[i][typeCol - 1]).toUpperCase();
+        const appFor = String(sData[i][appForCol - 1]).toLowerCase();
+        const batch = String(sData[i][batchCol - 1]).trim().replace(/\s+/g, '').toUpperCase();
+        const appTarget = String(sData[i][appTargetCol - 1]).trim().replace(/\s+/g, '').toUpperCase();
+        
+        let isMatch = false;
+        if (type === 'BATCH' && (batch === normBid || appTarget === normBid)) {
+          isMatch = true;
+        } else if (type === 'SPECIAL' && appFor === 'batch' && (batch === normBid || appTarget === normBid)) {
+          isMatch = true;
+        }
+
+        if (isMatch) {
+          if (enabledCol > 0) settingsSheet.getRange(i + 1, enabledCol).setValue(false);
+          if (rfidCol > 0) settingsSheet.getRange(i + 1, rfidCol).setValue(false);
+        }
+      }
+      executionCache.delete(SHEET_NAMES.SLOT_SETTINGS);
+    }
+
+    // 4. Deactivate legacy Slots (Batch slots)
+    const slotsSheet = getSheet(SHEET_NAMES.SLOTS);
+    if (slotsSheet) {
+      const headers = slotsSheet.getRange("1:1").getValues()[0];
+      const batchIdCol = headers.indexOf("BatchID") + 1;
+      const statusCol = headers.indexOf("Status") + 1;
+      if (batchIdCol > 0 && statusCol > 0) {
+        const sData = slotsSheet.getDataRange().getValues();
+        for (let i = 1; i < sData.length; i++) {
+          const rawBid = String(sData[i][batchIdCol - 1]);
+          const resolvedName = resolveBatchNameToName(rawBid);
+          const normResolved = String(resolvedName || rawBid).trim().replace(/\s+/g, '').toUpperCase();
+          if (normResolved === normBid) {
+            slotsSheet.getRange(i + 1, statusCol).setValue('Inactive');
+          }
+        }
+      }
+      executionCache.delete(SHEET_NAMES.SLOTS);
+    }
+
+    // 5. Deactivate legacy Exceptions
+    const excSheet = getSheet(SHEET_NAMES.SLOT_EXCEPTIONS);
+    if (excSheet) {
+      const headers = excSheet.getRange("1:1").getValues()[0];
+      const batchIdCol = headers.indexOf("BatchID") + 1;
+      const statusCol = headers.indexOf("Status") + 1;
+      if (batchIdCol > 0 && statusCol > 0) {
+        const eData = excSheet.getDataRange().getValues();
+        for (let i = 1; i < eData.length; i++) {
+          const rawBid = String(eData[i][batchIdCol - 1]);
+          const resolvedName = resolveBatchNameToName(rawBid);
+          const normResolved = String(resolvedName || rawBid).trim().replace(/\s+/g, '').toUpperCase();
+          if (normResolved === normBid) {
+            excSheet.getRange(i + 1, statusCol).setValue('Inactive');
+          }
+        }
+      }
+      executionCache.delete(SHEET_NAMES.SLOT_EXCEPTIONS);
+    }
+
+    logActivity('Slots Closed', `All configurations disabled for batch ${batchId} as all students have certificates.`);
+  } catch (e) {
+    Logger.log("Error in checkAndCloseBatchSlots: " + e.toString());
   }
 }
 
