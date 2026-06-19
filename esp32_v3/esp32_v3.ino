@@ -2940,278 +2940,261 @@ void setupWebServer() {
 }
 
 void serveAPLoginPage() {
-  String html = R"rawliteral(
-<!DOCTYPE html>
+  String html = R"rawliteral(<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V-VARMA | Secure Access</title>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --v-orange: #f39c12;
-            --bg-dark: #0d0d0d;
-            --card-bg: #1a1a1a;
-            --border-color: #333;
-        }
-        * { margin:0; padding:0; box-sizing:border-box; font-family:'Space Grotesk', sans-serif; }
-        body { 
-            background: var(--bg-dark); 
-            color: #eee; 
-            min-height: 100vh; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            backdrop-filter: blur(20px);
-        }
-        .login-card {
-            background: var(--card-bg); border: 2px solid var(--v-orange); border-radius: 28px;
-            padding: 3rem; width: 95%; max-width: 420px; text-align: center;
-            box-shadow: 0 0 60px rgba(243,156,18,0.2);
-        }
-        .v-shield-logo-big { 
-            width: 120px; height: 120px; color: var(--v-orange); margin: 0 auto 1rem auto; 
-            filter: drop-shadow(0 0 15px rgba(243,156,18,0.5)); 
-        }
-        .login-subtext { font-size: 0.9rem; color: #888; text-transform: lowercase; margin-bottom: 2rem; }
-        .input-group-v { position: relative; margin-bottom: 1.2rem; text-align: left; }
-        .v-input {
-            width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
-            padding: 1rem; border-radius: 12px; color: white; outline: none; transition: 0.3s;
-        }
-        .v-input:focus { border-color: var(--v-orange); }
-        .btn-v { 
-            width: 100%; padding: 1rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
-            transition: 0.3s; border: none; background: linear-gradient(135deg, #8B4513, #f39c12); color: white;
-            cursor: pointer; font-size: 0.9rem; letter-spacing: 1px;
-        }
-        .btn-v:active { transform: scale(0.98); }
-        .error-msg { color: #ff4d4d; font-size: 0.8rem; margin-top: 1rem; display: block; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V-VARMA | Secure Access</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+--v-orange: #f39c12;
+--bg-dark: #0d0d0d;
+--card-bg: #1a1a1a;
+--border-color: #333;
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Space Grotesk', sans-serif; }
+body {
+background: var(--bg-dark);
+color: #eee;
+min-height: 100vh;
+display: flex;
+align-items: center;
+justify-content: center;
+backdrop-filter: blur(20px);
+}
+.login-card {
+background: var(--card-bg); border: 2px solid var(--v-orange); border-radius: 28px;
+padding: 3rem; width: 95%; max-width: 420px; text-align: center;
+box-shadow: 0 0 60px rgba(243,156,18,0.2);
+}
+.v-shield-logo-big {
+width: 120px; height: 120px; color: var(--v-orange); margin: 0 auto 1rem auto;
+filter: drop-shadow(0 0 15px rgba(243,156,18,0.5));
+}
+.login-subtext { font-size: 0.9rem; color: #888; text-transform: lowercase; margin-bottom: 2rem; }
+.input-group-v { position: relative; margin-bottom: 1.2rem; text-align: left; }
+.v-input {
+width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
+padding: 1rem; border-radius: 12px; color: white; outline: none; transition: 0.3s;
+}
+.v-input:focus { border-color: var(--v-orange); }
+.btn-v {
+width: 100%; padding: 1rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
+transition: 0.3s; border: none; background: linear-gradient(135deg, #8B4513, #f39c12); color: white;
+cursor: pointer; font-size: 0.9rem; letter-spacing: 1px;
+}
+.btn-v:active { transform: scale(0.98); }
+.error-msg { color: #ff4d4d; font-size: 0.8rem; margin-top: 1rem; display: block; }
+</style>
 </head>
 <body>
-    <div class="login-card">
-        <div class="v-shield-logo-big">
-            <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
-                <path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
-                <path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--bg-dark)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <h1 style="letter-spacing: 4px; font-weight: 800; margin-bottom: 0.5rem;">V-VARMA</h1>
-        <div class="login-subtext">Configuration Access Mode</div>
-        
-        <div class="input-group-v">
-            <input type="text" id="login-user" class="v-input" value="admin" placeholder="Admin Username" required>
-        </div>
-        <div class="input-group-v">
-            <input type="password" id="login-pass" class="v-input" placeholder="Security Key" required>
-            <i class="fa-solid fa-eye eye-icon" onclick="togglePass('login-pass', this)" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #555; cursor: pointer;"></i>
-        </div>
-        
-        <div class="input-group-v" style="display: flex; align-items: center; gap: 10px; margin-top: -0.5rem; margin-bottom: 1.5rem;">
-            <input type="checkbox" id="remember" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--v-orange);">
-            <label for="remember" style="font-size: 0.85rem; color: #888; cursor: pointer; user-select: none;">Stay logged in (365 days)</label>
-        </div>
-
-        <button onclick="doLogin()" class="btn-v">Unlock System</button>
-        <div id="login-err" class="error-msg" style="display:none;">Verification Failed: Invalid Key</div>
-        
-        <script>
-            function togglePass(id, el) {
-                const inp = document.getElementById(id);
-                if (inp.type === 'password') {
-                    inp.type = 'text';
-                    el.classList.replace('fa-eye', 'fa-eye-slash');
-                } else {
-                    inp.type = 'password';
-                    el.classList.replace('fa-eye-slash', 'fa-eye');
-                }
-            }
-            async function doLogin() {
-                const u = document.getElementById('login-user').value;
-                const p = document.getElementById('login-pass').value;
-                const r = document.getElementById('remember').checked ? 1 : 0;
-                const err = document.getElementById('login-err');
-                err.style.display = 'none';
-                
-                try {
-                    const res = await fetch(`/login?u=${u}&p=${p}&r=${r}`);
-                    const data = await res.json();
-                    if (data.success) {
-                        location.href = '/';
-                    } else {
-                        err.style.display = 'block';
-                    }
-                } catch(e) { 
-                    err.innerText = "Connection Error";
-                    err.style.display = 'block';
-                }
-            }
-        </script>
-    </div>
+<div class="login-card">
+<div class="v-shield-logo-big">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
+<path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
+<path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--bg-dark)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+<h1 style="letter-spacing: 4px; font-weight: 800; margin-bottom: 0.5rem;">V-VARMA</h1>
+<div class="login-subtext">Configuration Access Mode</div>
+<div class="input-group-v">
+<input type="text" id="login-user" class="v-input" value="admin" placeholder="Admin Username" required>
+</div>
+<div class="input-group-v">
+<input type="password" id="login-pass" class="v-input" placeholder="Security Key" required>
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('login-pass', this)" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); color: #555; cursor: pointer;"></i>
+</div>
+<div class="input-group-v" style="display: flex; align-items: center; gap: 10px; margin-top: -0.5rem; margin-bottom: 1.5rem;">
+<input type="checkbox" id="remember" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--v-orange);">
+<label for="remember" style="font-size: 0.85rem; color: #888; cursor: pointer; user-select: none;">Stay logged in (365 days)</label>
+</div>
+<button onclick="doLogin()" class="btn-v">Unlock System</button>
+<div id="login-err" class="error-msg" style="display:none;">Verification Failed: Invalid Key</div>
+<script>
+function togglePass(id, el) {
+const inp = document.getElementById(id);
+if (inp.type === 'password') {
+inp.type = 'text';
+el.classList.replace('fa-eye', 'fa-eye-slash');
+} else {
+inp.type = 'password';
+el.classList.replace('fa-eye-slash', 'fa-eye');
+}
+}
+async function doLogin() {
+const u = document.getElementById('login-user').value;
+const p = document.getElementById('login-pass').value;
+const r = document.getElementById('remember').checked ? 1 : 0;
+const err = document.getElementById('login-err');
+err.style.display = 'none';
+try {
+const res = await fetch(`/login?u=${u}&p=${p}&r=${r}`);
+const data = await res.json();
+if (data.success) {
+location.href = '/';
+} else {
+err.style.display = 'block';
+}
+} catch(e) {
+err.innerText = "Connection Error";
+err.style.display = 'block';
+}
+}
+</script>
+</div>
 </body>
-</html>
-)rawliteral";
+</html>)rawliteral";
   server.send(200, "text/html", html);
 }
 
 void serveConfigPage() {
-  String html = R"rawliteral(
-<!DOCTYPE html>
+  String html = R"rawliteral(<!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V-VARMA | System Configuration</title>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --v-orange: #f39c12;
-            --v-brown: #8B4513;
-            --v-green: #2ecc71;
-            --bg-dark: #0d0d0d;
-            --card-bg: #1a1a1a;
-            --border-color: #333;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
-        body { background: var(--bg-dark); color: #eee; min-height: 100vh; padding: 20px; }
-        .input-group-v { position: relative; margin-bottom: 1.5rem; }
-        .eye-icon { 
-            position: absolute; right: 15px; top: 50%; transform: translateY(-50%); 
-            color: #555; cursor: pointer; transition: 0.2s; z-index: 10;
-        }
-        .eye-icon:hover { color: var(--v-orange); }
-        .container { max-width: 600px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 30px; }
-        .v-shield-logo { width: 80px; height: 80px; color: var(--v-orange); margin: 0 auto 10px; }
-        .v-card {
-            background: var(--card-bg); border: 2px solid var(--border-color);
-            border-radius: 24px; padding: 2rem; margin-bottom: 1.5rem;
-            border-left: 6px solid var(--v-brown);
-        }
-        .card-title { color: var(--v-orange); font-weight: 800; text-transform: uppercase; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
-        .input-label { display: block; font-size: 0.75rem; color: #888; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px; }
-        .v-input {
-            width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
-            padding: 1rem; border-radius: 12px; color: white; outline: none; margin-bottom: 1.5rem;
-        }
-        .v-input:focus { border-color: var(--v-orange); }
-        .btn-v { 
-            width: 100%; padding: 1rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
-            border: none; cursor: pointer; transition: 0.3s; font-size: 0.85rem;
-        }
-        .btn-v-orange { background: linear-gradient(135deg, var(--v-brown), var(--v-orange)); color: white; }
-        .btn-v-blue { background: #2980b9; color: white; margin-bottom: 1rem; }
-        .wifi-list { max-height: 200px; overflow-y: auto; background: #0a0a0a; border-radius: 12px; margin-bottom: 1.5rem; display: none; border: 1px solid #333; }
-        .wifi-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #222; display: flex; justify-content: space-between; font-size: 0.85rem; }
-        .wifi-item:hover { background: #111; color: var(--v-orange); }
-        #status-msg { text-align: center; font-size: 0.85rem; margin-top: 1rem; }
-        .mac-info { font-size: 0.7rem; color: #555; text-align: center; font-family: monospace; }
-    </style>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V-VARMA | System Configuration</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root {
+--v-orange: #f39c12;
+--v-brown: #8B4513;
+--v-green: #2ecc71;
+--bg-dark: #0d0d0d;
+--card-bg: #1a1a1a;
+--border-color: #333;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Space Grotesk', sans-serif; }
+body { background: var(--bg-dark); color: #eee; min-height: 100vh; padding: 20px; }
+.input-group-v { position: relative; margin-bottom: 1.5rem; }
+.eye-icon {
+position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+color: #555; cursor: pointer; transition: 0.2s; z-index: 10;
+}
+.eye-icon:hover { color: var(--v-orange); }
+.container { max-width: 600px; margin: 0 auto; }
+.header { text-align: center; margin-bottom: 30px; }
+.v-shield-logo { width: 80px; height: 80px; color: var(--v-orange); margin: 0 auto 10px; }
+.v-card {
+background: var(--card-bg); border: 2px solid var(--border-color);
+border-radius: 24px; padding: 2rem; margin-bottom: 1.5rem;
+border-left: 6px solid var(--v-brown);
+}
+.card-title { color: var(--v-orange); font-weight: 800; text-transform: uppercase; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.input-label { display: block; font-size: 0.75rem; color: #888; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 1px; }
+.v-input {
+width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
+padding: 1rem; border-radius: 12px; color: white; outline: none; margin-bottom: 1.5rem;
+}
+.v-input:focus { border-color: var(--v-orange); }
+.btn-v {
+width: 100%; padding: 1rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
+border: none; cursor: pointer; transition: 0.3s; font-size: 0.85rem;
+}
+.btn-v-orange { background: linear-gradient(135deg, var(--v-brown), var(--v-orange)); color: white; }
+.btn-v-blue { background: #2980b9; color: white; margin-bottom: 1rem; }
+.wifi-list { max-height: 200px; overflow-y: auto; background: #0a0a0a; border-radius: 12px; margin-bottom: 1.5rem; display: none; border: 1px solid #333; }
+.wifi-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #222; display: flex; justify-content: space-between; font-size: 0.85rem; }
+.wifi-item:hover { background: #111; color: var(--v-orange); }
+#status-msg { text-align: center; font-size: 0.85rem; margin-top: 1rem; }
+.mac-info { font-size: 0.7rem; color: #555; text-align: center; font-family: monospace; }
+</style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="v-shield-logo">
-                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
-                    <path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
-                    <path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="#2c3e50" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </div>
-            <h2 style="letter-spacing: 2px;">V-VARMA</h2>
-            <div class="mac-info">MAC: )rawliteral" +
+<div class="container">
+<div class="header">
+<div class="v-shield-logo">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" style="width:100%; height:100%;">
+<path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
+<path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="#2c3e50" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+<h2 style="letter-spacing: 2px;">V-VARMA</h2>
+<div class="mac-info">MAC:)rawliteral" +
                 myMac + R"rawliteral(</div>
-        </div>
-
-        <div class="v-card">
-            <div class="card-title"><i class="fas fa-wifi"></i> AP Mode - WiFi Credential Integration</div>
-            <label class="input-label">Available SSIDs</label>
-            <button class="btn-v btn-v-blue" onclick="scanWiFi()">Scan for Networks</button>
-            <div id="wifiList" class="wifi-list"></div>
-            
-            <label class="input-label">SSID</label>
-            <input type="text" id="ssid" class="v-input" placeholder="Select or type SSID">
-            
-            <label class="input-label">Security Key</label>
-            <div class="input-group-v">
-                <input type="password" id="pass" class="v-input" placeholder="WiFi Password">
-                <i class="fa-solid fa-eye eye-icon" onclick="togglePass('pass', this)"></i>
-            </div>
-
-            <div class="card-title" style="margin-top: 1rem;"><i class="fas fa-lock"></i> Admin Credentials</div>
-            <label class="input-label">Admin Name</label>
-            <input type="text" id="devUser" class="v-input" value=")rawliteral" +
+</div>
+<div class="v-card">
+<div class="card-title"><i class="fas fa-wifi"></i> AP Mode - WiFi Credential Integration</div>
+<label class="input-label">Available SSIDs</label>
+<button class="btn-v btn-v-blue" onclick="scanWiFi()">Scan for Networks</button>
+<div id="wifiList" class="wifi-list"></div>
+<label class="input-label">SSID</label>
+<input type="text" id="ssid" class="v-input" placeholder="Select or type SSID">
+<label class="input-label">Security Key</label>
+<div class="input-group-v">
+<input type="password" id="pass" class="v-input" placeholder="WiFi Password">
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('pass', this)"></i>
+</div>
+<div class="card-title" style="margin-top: 1rem;"><i class="fas fa-lock"></i> Admin Credentials</div>
+<label class="input-label">Admin Name</label>
+<input type="text" id="devUser" class="v-input" value=")rawliteral" +
                 deviceUser + R"rawliteral(">
-            
-            <label class="input-label">Admin Password</label>
-            <div class="input-group-v">
-                <input type="password" id="devPass" class="v-input" value=")rawliteral" +
+<label class="input-label">Admin Password</label>
+<div class="input-group-v">
+<input type="password" id="devPass" class="v-input" value=")rawliteral" +
                 devicePass + R"rawliteral(">
-                <i class="fa-solid fa-eye eye-icon" onclick="togglePass('devPass', this)"></i>
-            </div>
-
-            <div class="card-title" style="margin-top: 1rem;"><i class="fas fa-link"></i> Cloud Sync</div>
-            <label class="input-label">Google Script ID</label>
-            <input type="text" id="scriptId" class="v-input" placeholder="AKfycb..." value=")rawliteral" +
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('devPass', this)"></i>
+</div>
+<div class="card-title" style="margin-top: 1rem;"><i class="fas fa-link"></i> Cloud Sync</div>
+<label class="input-label">Google Script ID</label>
+<input type="text" id="scriptId" class="v-input" placeholder="AKfycb..." value=")rawliteral" +
                 scriptId + R"rawliteral(">
-            
-            <button class="btn-v btn-v-orange" onclick="save()">Initialize & Reboot</button>
-            <div id="status-msg"></div>
-            <div class="mac-info" style="margin-top: 1.5rem; border-top: 1px solid #333; padding-top: 1rem;">
-                DEVICE MAC: <span style="color:var(--v-orange)">)rawliteral" +
+<button class="btn-v btn-v-orange" onclick="save()">Initialize & Reboot</button>
+<div id="status-msg"></div>
+<div class="mac-info" style="margin-top: 1.5rem; border-top: 1px solid #333; padding-top: 1rem;">
+DEVICE MAC: <span style="color:var(--v-orange)">)rawliteral" +
                 myMac + R"rawliteral(</span>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        function togglePass(id, el) {
-            const inp = document.getElementById(id);
-            if (inp.type === 'password') {
-                inp.type = 'text';
-                el.classList.replace('fa-eye', 'fa-eye-slash');
-            } else {
-                inp.type = 'password';
-                el.classList.replace('fa-eye-slash', 'fa-eye');
-            }
-        }
-        async function scanWiFi() {
-            const list = document.getElementById('wifiList');
-            list.style.display = 'block';
-            list.innerHTML = '<div style="padding:15px; color:#888;">Scanning...</div>';
-            try {
-                const res = await fetch('/scan_wifi');
-                const nets = await res.json();
-                list.innerHTML = nets.map(n => `<div class="wifi-item" onclick="select('${n.ssid}')"><span>${n.ssid}</span><span>${n.rssi} dBm</span></div>`).join('');
-            } catch(e) { list.innerHTML = '<div style="padding:15px; color:red;">Scan failed</div>'; }
-        }
-        function select(s) { document.getElementById('ssid').value = s; document.getElementById('wifiList').style.display = 'none'; }
-        async function save() {
-            const s = document.getElementById('ssid').value;
-            const p = document.getElementById('pass').value;
-            const sid = document.getElementById('scriptId').value;
-            const u = document.getElementById('devUser').value;
-            const pw = document.getElementById('devPass').value;
-            const msg = document.getElementById('status-msg');
-            msg.innerHTML = "Syncing with hardware...";
-            const data = new URLSearchParams();
-            data.append('ssid', s); data.append('pass', p); data.append('scriptId', sid);
-            data.append('adminUser', u); data.append('adminPass', pw); 
-            try {
-                const res = await fetch('/save_net', { method: 'POST', body: data });
-                const resSys = await fetch('/save_sys?script=' + encodeURIComponent(sid) + '&adminUser=' + encodeURIComponent(u) + '&adminPass=' + encodeURIComponent(pw));
-                if(res.ok && resSys.ok) {
-                    msg.innerHTML = "<span style='color:var(--v-green)'>SUCCESS! Rebooting system...</span>";
-                    setTimeout(() => location.reload(), 5000);
-                } else msg.innerHTML = "<span style='color:red'>Hardware Reject</span>";
-            } catch(e) { msg.innerHTML = "<span style='color:red'>Network Error</span>"; }
-        }
-    </script>
+</div>
+</div>
+</div>
+<script>
+function togglePass(id, el) {
+const inp = document.getElementById(id);
+if (inp.type === 'password') {
+inp.type = 'text';
+el.classList.replace('fa-eye', 'fa-eye-slash');
+} else {
+inp.type = 'password';
+el.classList.replace('fa-eye-slash', 'fa-eye');
+}
+}
+async function scanWiFi() {
+const list = document.getElementById('wifiList');
+list.style.display = 'block';
+list.innerHTML = '<div style="padding:15px; color:#888;">Scanning...</div>';
+try {
+const res = await fetch('/scan_wifi');
+const nets = await res.json();
+list.innerHTML = nets.map(n => `<div class="wifi-item" onclick="select('${n.ssid}')"><span>${n.ssid}</span><span>${n.rssi} dBm</span></div>`).join('');
+} catch(e) { list.innerHTML = '<div style="padding:15px; color:red;">Scan failed</div>'; }
+}
+function select(s) { document.getElementById('ssid').value = s; document.getElementById('wifiList').style.display = 'none'; }
+async function save() {
+const s = document.getElementById('ssid').value;
+const p = document.getElementById('pass').value;
+const sid = document.getElementById('scriptId').value;
+const u = document.getElementById('devUser').value;
+const pw = document.getElementById('devPass').value;
+const msg = document.getElementById('status-msg');
+msg.innerHTML = "Syncing with hardware...";
+const data = new URLSearchParams();
+data.append('ssid', s); data.append('pass', p); data.append('scriptId', sid);
+data.append('adminUser', u); data.append('adminPass', pw);
+try {
+const res = await fetch('/save_net', { method: 'POST', body: data });
+const resSys = await fetch('/save_sys?script=' + encodeURIComponent(sid) + '&adminUser=' + encodeURIComponent(u) + '&adminPass=' + encodeURIComponent(pw));
+if(res.ok && resSys.ok) {
+msg.innerHTML = "<span style='color:var(--v-green)'>SUCCESS! Rebooting system...</span>";
+setTimeout(() => location.reload(), 5000);
+} else msg.innerHTML = "<span style='color:red'>Hardware Reject</span>";
+} catch(e) { msg.innerHTML = "<span style='color:red'>Network Error</span>"; }
+}
+</script>
 </body>
-</html>
-)rawliteral";
+</html>)rawliteral";
   server.send(200, "text/html", html);
 }
 
@@ -3251,1214 +3234,1067 @@ void handleDashboard() {
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
 
-  server.sendContent(R"rawliteral(
-<!DOCTYPE html>
+  server.sendContent(R"rawliteral(<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V-VARMA RFID | GSV ELECTRICAL ENTERPRISES v1.1</title>
-    <!-- CSS Dependencies -->
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        :root {
-            --v-orange: #f39c12;
-            --v-brown: #8B4513;
-            --v-red: #ff4d4d;
-            --v-green: #2ecc71;
-            --v-blue: #1a2a6c;
-            --bg-dark: #0d0d0d;
-            --card-bg: #1a1a1a;
-            --border-color: #333;
-            --header-gradient: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
-        }
-
-        * { margin:0; padding:0; box-sizing:border-box; font-family:'Space Grotesk', sans-serif; }
-        body { background: var(--bg-dark); color: #eee; min-height: 100vh; overflow-x:hidden; }
-
-        /* Custom Hand-Drawn V-Shield Styling */
-        .v-shield-svg {
-            display: inline-block;
-            vertical-align: middle;
-            width: 100%;
-            height: 100%;
-        }
-
-        /* Login System */
-        #login-overlay {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 9999;
-            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(20px);
-            transition: opacity 0.5s ease;
-        }
-        .login-card {
-            background: var(--card-bg); border: 2px solid var(--v-orange); border-radius: 28px;
-            padding: 3rem; width: 90%; max-width: 420px; text-align: center;
-            box-shadow: 0 0 60px rgba(243,156,18,0.2);
-        }
-        .v-shield-logo-big { 
-            width: 140px; 
-            height: 140px; 
-            color: var(--v-orange); 
-            margin: 0 auto 1rem auto; 
-            filter: drop-shadow(0 0 15px rgba(243,156,18,0.5)); 
-            animation: shieldPulse 2s infinite ease-in-out; 
-        }
-        .login-subtext { font-size: 1rem; color: #888; text-transform: lowercase; margin-bottom: 0.2rem; }
-        .sta-mode-tag { font-size: 0.7rem; color: var(--v-orange); letter-spacing: 2px; font-weight: 700; margin-bottom: 2rem; }
-        
-        @keyframes shieldPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-
-        /* Premium Header */
-        .v-header {
-            background: var(--header-gradient);
-            padding: 1.5rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            position: sticky; top: 0; z-index: 1000;
-        }
-        .header-title { font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 20px; }
-        .header-logo { 
-            width: 85px; 
-            height: 85px; 
-            color: white; 
-            filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); 
-        } 
-        
-        .nav-links-container {
-            background: rgba(0,0,0,0.3); border-radius: 50px; padding: 5px;
-            display: inline-flex; gap: 5px; margin-top: 1.2rem; border: 1px solid rgba(255,255,255,0.1);
-        }
-        .nav-tab {
-            padding: 0.5rem 1.5rem; border-radius: 30px; cursor: pointer;
-            transition: 0.3s; font-weight: 700; font-size: 0.8rem; color: rgba(255,255,255,0.7);
-        }
-        .nav-tab.active { background: white; color: var(--v-blue); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-
-        /* Status Icons */
-        .status-container { position: absolute; top: 1.5rem; right: 2rem; display: flex; gap: 1.5rem; align-items: center; }
-        .stat-icon { font-size: 1.2rem; transition: 0.3s; }
-        .stat-online { color: var(--v-green); filter: drop-shadow(0 0 5px var(--v-green)); }
-        .stat-offline { color: var(--v-red); filter: drop-shadow(0 0 5px var(--v-red)); }
-        .pulse { animation: p 2s infinite; }
-
-        /* Cards */
-        .container-custom { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
-        .tab-content { display: none; animation: slideUp 0.5s ease; }
-        .tab-content.active { display: block; }
-
-        .v-card {
-            background: var(--card-bg); border: 2px solid var(--border-color);
-            border-radius: 24px; padding: 1.8rem; margin-bottom: 1.5rem;
-            transition: transform 0.3s ease; border-left: 6px solid var(--v-brown);
-        }
-        .card-title { color: var(--v-orange); font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
-
-        /* Monitor */
-        .live-monitor {
-            background: linear-gradient(180deg, #0f0f0f, #000000);
-            border-radius: 25px; padding: 2.5rem 1.5rem; text-align: center;
-            border: 1px solid #333; margin-bottom: 2rem; position: relative; overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
-        }
-        .status-badge { font-size: 3.5rem; font-weight: 900; line-height: 1; color: var(--v-orange); text-shadow: 0 0 25px rgba(243,156,18,0.4); margin-bottom: 1.5rem; letter-spacing: 5px; }
-        .student-name { font-size: 1.8rem; font-weight: 600; color: #ccc; margin-bottom: 0.8rem; text-transform: uppercase; }
-        .uid-text { font-family: 'Inter', sans-serif; font-size: 4rem; font-weight: 900; color: white; letter-spacing: 2px; line-height: 1.1; margin-bottom: 1rem; }
-
-        /* Buttons */
-        .btn-v { 
-            padding: 0.8rem 1.5rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
-            transition: 0.3s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem;
-        }
-        .btn-v-orange { background: linear-gradient(135deg, var(--v-brown), var(--v-orange)); color: white; }
-        .btn-v-green { background: var(--v-green); color: white; }
-        .btn-v-red { background: var(--v-red); color: white; }
-        .btn-v-outline { background: transparent; border: 2px solid var(--border-color); color: white; }
-        .btn-v:active { transform: scale(0.95); }
-
-        /* Serial Monitor */
-        #serial-monitor {
-            background: #000; border: 1px solid #333; border-radius: 12px; 
-            margin-top: 1rem; display: none; overflow: hidden;
-        }
-        .serial-header { background: #1a1a1a; padding: 8px 15px; font-size: 0.75rem; color: #666; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
-        .serial-output { 
-            height: 150px; overflow-y: auto; padding: 10px; font-family: 'Consolas', 'Monaco', monospace; 
-            font-size: 0.75rem; color: #00ff00; line-height: 1.4;
-        }
-
-        /* Inputs & Password Eye */
-        .input-group-v { position: relative; margin-bottom: 1rem; }
-        .v-input {
-            width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
-            padding: 1rem; border-radius: 12px; color: white; outline: none; transition: 0.3s;
-        }
-        .v-input:focus { border-color: var(--v-orange); }
-        .eye-icon { 
-            position: absolute; right: 15px; top: 50%; transform: translateY(-50%); 
-            color: #555; cursor: pointer; transition: 0.2s; z-index: 10;
-        }
-        .eye-icon:hover { color: var(--v-orange); }
-
-        @keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-
-        .toast-v {
-            position: fixed; bottom: 30px; right: 30px; background: var(--card-bg);
-            border-left: 5px solid var(--v-orange); padding: 1.2rem 2rem; border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; z-index: 10001; animation: slideUp 0.3s ease;
-        }
-        
-        .inv-history-container { max-height: 350px; overflow-y: auto; padding-right: 5px; }
-        .inv-history-container::-webkit-scrollbar { width: 6px; }
-        .inv-history-container::-webkit-scrollbar-thumb { background: var(--v-brown); border-radius: 10px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V-VARMA RFID | GSV ELECTRICAL ENTERPRISES v1.1</title>
+<!-- CSS Dependencies -->
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+:root {
+--v-orange: #f39c12;
+--v-brown: #8B4513;
+--v-red: #ff4d4d;
+--v-green: #2ecc71;
+--v-blue: #1a2a6c;
+--bg-dark: #0d0d0d;
+--card-bg: #1a1a1a;
+--border-color: #333;
+--header-gradient: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+}
+* { margin:0; padding:0; box-sizing:border-box; font-family:'Space Grotesk', sans-serif; }
+body { background: var(--bg-dark); color: #eee; min-height: 100vh; overflow-x:hidden; }
+.v-shield-svg {
+display: inline-block;
+vertical-align: middle;
+width: 100%;
+height: 100%;
+}
+#login-overlay {
+position: fixed; inset: 0; background: rgba(0,0,0,0.98); z-index: 9999;
+display: flex; align-items: center; justify-content: center; backdrop-filter: blur(20px);
+transition: opacity 0.5s ease;
+}
+.login-card {
+background: var(--card-bg); border: 2px solid var(--v-orange); border-radius: 28px;
+padding: 3rem; width: 90%; max-width: 420px; text-align: center;
+box-shadow: 0 0 60px rgba(243,156,18,0.2);
+}
+.v-shield-logo-big {
+width: 140px;
+height: 140px;
+color: var(--v-orange);
+margin: 0 auto 1rem auto;
+filter: drop-shadow(0 0 15px rgba(243,156,18,0.5));
+animation: shieldPulse 2s infinite ease-in-out;
+}
+.login-subtext { font-size: 1rem; color: #888; text-transform: lowercase; margin-bottom: 0.2rem; }
+.sta-mode-tag { font-size: 0.7rem; color: var(--v-orange); letter-spacing: 2px; font-weight: 700; margin-bottom: 2rem; }
+@keyframes shieldPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+.v-header {
+background: var(--header-gradient);
+padding: 1.5rem 0; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+position: sticky; top: 0; z-index: 1000;
+}
+.header-title { font-size: 1.4rem; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 20px; }
+.header-logo {
+width: 85px;
+height: 85px;
+color: white;
+filter: drop-shadow(0 0 10px rgba(255,255,255,0.3));
+}
+.nav-links-container {
+background: rgba(0,0,0,0.3); border-radius: 50px; padding: 5px;
+display: inline-flex; gap: 5px; margin-top: 1.2rem; border: 1px solid rgba(255,255,255,0.1);
+}
+.nav-tab {
+padding: 0.5rem 1.5rem; border-radius: 30px; cursor: pointer;
+transition: 0.3s; font-weight: 700; font-size: 0.8rem; color: rgba(255,255,255,0.7);
+}
+.nav-tab.active { background: white; color: var(--v-blue); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+.status-container { position: absolute; top: 1.5rem; right: 2rem; display: flex; gap: 1.5rem; align-items: center; }
+.stat-icon { font-size: 1.2rem; transition: 0.3s; }
+.stat-online { color: var(--v-green); filter: drop-shadow(0 0 5px var(--v-green)); }
+.stat-offline { color: var(--v-red); filter: drop-shadow(0 0 5px var(--v-red)); }
+.pulse { animation: p 2s infinite; }
+.container-custom { max-width: 1100px; margin: 2rem auto; padding: 0 1.5rem; }
+.tab-content { display: none; animation: slideUp 0.5s ease; }
+.tab-content.active { display: block; }
+.v-card {
+background: var(--card-bg); border: 2px solid var(--border-color);
+border-radius: 24px; padding: 1.8rem; margin-bottom: 1.5rem;
+transition: transform 0.3s ease; border-left: 6px solid var(--v-brown);
+}
+.card-title { color: var(--v-orange); font-weight: 800; text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 1.2rem; display: flex; align-items: center; gap: 10px; font-size: 0.95rem; }
+.live-monitor {
+background: linear-gradient(180deg, #0f0f0f, #000000);
+border-radius: 25px; padding: 2.5rem 1.5rem; text-align: center;
+border: 1px solid #333; margin-bottom: 2rem; position: relative; overflow: hidden;
+box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+}
+.status-badge { font-size: 3.5rem; font-weight: 900; line-height: 1; color: var(--v-orange); text-shadow: 0 0 25px rgba(243,156,18,0.4); margin-bottom: 1.5rem; letter-spacing: 5px; }
+.student-name { font-size: 1.8rem; font-weight: 600; color: #ccc; margin-bottom: 0.8rem; text-transform: uppercase; }
+.uid-text { font-family: 'Inter', sans-serif; font-size: 4rem; font-weight: 900; color: white; letter-spacing: 2px; line-height: 1.1; margin-bottom: 1rem; }
+.btn-v {
+padding: 0.8rem 1.5rem; border-radius: 12px; font-weight: 800; text-transform: uppercase;
+transition: 0.3s; border: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.85rem;
+}
+.btn-v-orange { background: linear-gradient(135deg, var(--v-brown), var(--v-orange)); color: white; }
+.btn-v-green { background: var(--v-green); color: white; }
+.btn-v-red { background: var(--v-red); color: white; }
+.btn-v-outline { background: transparent; border: 2px solid var(--border-color); color: white; }
+.btn-v:active { transform: scale(0.95); }
+#serial-monitor {
+background: #000; border: 1px solid #333; border-radius: 12px;
+margin-top: 1rem; display: none; overflow: hidden;
+}
+.serial-header { background: #1a1a1a; padding: 8px 15px; font-size: 0.75rem; color: #666; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+.serial-output {
+height: 150px; overflow-y: auto; padding: 10px; font-family: 'Consolas', 'Monaco', monospace;
+font-size: 0.75rem; color: #00ff00; line-height: 1.4;
+}
+.input-group-v { position: relative; margin-bottom: 1rem; }
+.v-input {
+width: 100%; background: #0a0a0a; border: 2px solid var(--border-color);
+padding: 1rem; border-radius: 12px; color: white; outline: none; transition: 0.3s;
+}
+.v-input:focus { border-color: var(--v-orange); }
+.eye-icon {
+position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
+color: #555; cursor: pointer; transition: 0.2s; z-index: 10;
+}
+.eye-icon:hover { color: var(--v-orange); }
+@keyframes p { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+.toast-v {
+position: fixed; bottom: 30px; right: 30px; background: var(--card-bg);
+border-left: 5px solid var(--v-orange); padding: 1.2rem 2rem; border-radius: 15px;
+box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; z-index: 10001; animation: slideUp 0.3s ease;
+}
+.inv-history-container { max-height: 350px; overflow-y: auto; padding-right: 5px; }
+.inv-history-container::-webkit-scrollbar { width: 6px; }
+.inv-history-container::-webkit-scrollbar-thumb { background: var(--v-brown); border-radius: 10px; }
+</style>
 </head>
 <body>
-
-    <!-- Updated Login Overlay with Custom Brush-Stroke V-Shield -->
-    <div id="login-overlay" style="display: )rawliteral");
+<!-- Updated Login Overlay with Custom Brush-Stroke V-Shield -->
+<div id="login-overlay" style="display:)rawliteral");
 
   server.sendContent(authed ? "none" : "flex");
 
   server.sendContent(R"rawliteral(;">
-        <div class="login-card">
-            <div class="v-shield-logo-big">
-                <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" class="v-shield-svg">
-                    <!-- Outer Shield -->
-                    <path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
-                    <!-- Custom Brush Stroke V (matching physical controller photo) -->
-                    <path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--card-bg)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </div>
-            <h1 class="fw-bold text-white mb-1" style="letter-spacing: 4px;">V-VARMA</h1>
-            <div class="login-subtext">secure login for dash board</div>
-
-            <div class="input-group-v">
-                <input type="text" class="v-input" id="admin-user" value="admin" placeholder="Username">
-            </div>
-            <div class="input-group-v">
-                <input type="password" class="v-input" id="admin-pass" placeholder="Authorization Key">
-                <i class="fa-solid fa-eye eye-icon" onclick="togglePass('admin-pass', this)"></i>
-            </div>
-            
-            <div class="input-group-v" style="display: flex; align-items: center; gap: 10px; margin-top: -0.5rem; margin-bottom: 1.5rem; text-align: left;">
-                <input type="checkbox" id="admin-remember" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--v-orange);">
-                <label for="admin-remember" style="font-size: 0.85rem; color: #888; cursor: pointer; user-select: none;">Stay logged in (365 days)</label>
-            </div>
-            
-            <button class="btn-v btn-v-orange w-100 mt-2" onclick="handleLogin()">GRANT SYSTEM ACCESS</button>
-        </div>
-    </div>
-
-    <!-- Main UI -->
-    <div id="app-ui" style="display: )rawliteral" +
+<div class="login-card">
+<div class="v-shield-logo-big">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" class="v-shield-svg">
+<!-- Outer Shield -->
+<path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
+<!-- Custom Brush Stroke V (matching physical controller photo) -->
+<path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--card-bg)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+<h1 class="fw-bold text-white mb-1" style="letter-spacing: 4px;">V-VARMA</h1>
+<div class="login-subtext">secure login for dash board</div>
+<div class="input-group-v">
+<input type="text" class="v-input" id="admin-user" value="admin" placeholder="Username">
+</div>
+<div class="input-group-v">
+<input type="password" class="v-input" id="admin-pass" placeholder="Authorization Key">
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('admin-pass', this)"></i>
+</div>
+<div class="input-group-v" style="display: flex; align-items: center; gap: 10px; margin-top: -0.5rem; margin-bottom: 1.5rem; text-align: left;">
+<input type="checkbox" id="admin-remember" style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--v-orange);">
+<label for="admin-remember" style="font-size: 0.85rem; color: #888; cursor: pointer; user-select: none;">Stay logged in (365 days)</label>
+</div>
+<button class="btn-v btn-v-orange w-100 mt-2" onclick="handleLogin()">GRANT SYSTEM ACCESS</button>
+</div>
+</div>
+<!-- Main UI -->
+<div id="app-ui" style="display:)rawliteral" +
                      String(authed ? "block" : "none") + R"rawliteral(;">
-        <header class="v-header text-center">
-            <div class="container">
-                <div class="header-title text-white">
-                    <div class="header-logo">
-                        <!-- Updated Dashboard Header Logo to use custom V-Shield -->
-                        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" class="v-shield-svg">
-                            <path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
-                            <path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--v-blue)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
-                    </div>
-                    <div>V-VARMA RFID Attendance Management System</div>
-                </div>
-                <p class="text-white-50 small mt-1">GSV Electrical Enterprises | v1.1</p>
-                
-                <div class="nav-links-container">
-                    <div class="nav-tab active" onclick="switchTab('overview', this)">OVERVIEW</div>
-                    <div class="nav-tab" onclick="switchTab('attendance', this)">ATTENDANCE</div>
-                    <div class="nav-tab" onclick="switchTab('inventory', this)">RFID INVENTORY</div>
-                    <div class="nav-tab" onclick="switchTab('verify', this)">VERIFY RFID</div>
-                    <div class="nav-tab" onclick="switchTab('settings', this)">CONFIGURATION</div>
-                </div>
-            </div>
-            
-            <div class="status-container">
-                <i class="fa-solid fa-terminal stat-icon" onclick="toggleSerial()" title="Serial Monitor" style="color:#888; cursor:pointer;"></i>
-                <i class="fa-solid fa-microchip stat-icon stat-offline pulse" id="stat-mcu" title="Controller"></i>
-                <i class="fa-solid fa-network-wired stat-icon stat-offline pulse" id="stat-net" title="Network"></i>
-                <i class="fa-solid fa-database stat-icon stat-offline pulse" id="stat-db" title="Database"></i>
-                <i class="fa-solid fa-wifi stat-icon stat-offline pulse" id="stat-wifi" title="WiFi"></i>
-            </div>
-        </header>
-
-        <div class="container-custom">
-            <!-- Serial Monitor -->
-            <div id="serial-monitor">
-                <div class="serial-header">
-                    <span><i class="fa-solid fa-terminal me-2"></i> HARDWARE SERIAL DATA FLOW</span>
-                    <button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.6rem;" onclick="clearSerial()">CLEAR</button>
-                </div>
-                <div id="serial-out" class="serial-output"></div>
-            </div>
-
-            <!-- Overview -->
-            <div id="overview" class="tab-content active">
-                <div class="live-monitor">
-                    <div class="status-badge" id="live-status">SCAN READY</div>
-                    <div class="student-name" id="live-name">---</div>
-                    <div class="uid-text" id="live-uid">0000000000</div>
-                    <div id="live-status-msg" style="color: var(--v-orange); font-weight: 900; margin-top: 20px; font-size: 1.4rem; text-transform: uppercase; text-shadow: 0 0 15px rgba(243,156,18,0.5);"></div>
-                </div>
-
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="v-card">
-                            <div class="card-title"><i class="fa-solid fa-broadcast-tower"></i> DEVICE INFO</div>
-                            <div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Identity</span><span class="text-white" id="disp-dev-name">--</span></div>
-                            <div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Assigned IP</span><span class="text-white" id="disp-ip">--</span></div>
-                            <div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>MAC ID</span><span class="text-white small" id="disp-mac">--</span></div>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="v-card">
-                            <div class="card-title"><i class="fa-solid fa-cloud"></i> CLOUD STATUS</div>
-                            <div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Sync Engine</span><span class="text-white" id="disp-script">--</span></div>
-                            <div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Signal</span><span class="text-white" id="disp-rssi">--</span></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Attendance -->
-            <div id="attendance" class="tab-content">
-                <div class="v-card">
-                    <div class="card-title"><i class="fa-solid fa-sliders"></i> MODE CONTROL</div>
-                    <div class="d-flex gap-3 mb-4 flex-wrap">
-                        <button class="btn-v btn-v-green" onclick="setMode('IN')"><i class="fa-solid fa-right-to-bracket"></i> SET IN</button>
-                        <button class="btn-v btn-v-red" onclick="setMode('OUT')"><i class="fa-solid fa-right-from-bracket"></i> SET OUT</button>
-                        <button class="btn-v btn-v-orange" onclick="setMode('INV')"><i class="fa-solid fa-boxes-stacked"></i> SET INV</button>
-                        <button class="btn-v btn-v-outline" onclick="resetUI(this)"><i class="fa-solid fa-refresh"></i> CLEAR MONITOR</button>
-                    </div>
-                    
-                    <div class="card-title mt-4 d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-clock-rotate-left"></i> LOG HISTORY</span>
-                        <button class="btn-v btn-v-outline py-1" onclick="fetchLogs(this)"><i class="fa-solid fa-rotate"></i> RELOAD</button>
-                    </div>
-                    <div id="log-list"></div>
-                </div>
-            </div>
-
-            <!-- Inventory -->
-            <div id="inventory" class="tab-content">
-                <div class="v-card text-center" style="min-height: 250px;">
-                    <div class="card-title justify-content-center"><i class="fa-solid fa-id-card"></i> TAG REGISTRATION</div>
-                    <div class="d-flex justify-content-center gap-3 mb-4 flex-wrap">
-                        <button class="btn-v btn-v-orange" id="btn-capture" onclick="startCaptureFlow()"><i class="fa-solid fa-crosshairs"></i> START CAPTURE</button>
-                        <button class="btn-v btn-v-outline" onclick="resetCapture()"><i class="fa-solid fa-eraser"></i> REFRESH</button>
-                        <button class="btn-v btn-v-green" id="cloud-save-btn" style="display: none;" onclick="pushToCloud()">
-                            <i class="fa-solid fa-cloud-arrow-up"></i> SAVE TO CLOUD
-                        </button>
-                    </div>
-                    <div id="capture-uid" class="status-badge" style="font-size: 3rem; letter-spacing: 5px; color: var(--v-blue);">--------</div>
-                    <div id="capture-msg" class="text-white-50 small mt-2">Ready for card registration</div>
-                </div>
-
-                <div class="v-card">
-                    <div class="card-title d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-history"></i> INVENTORY DATABASE</span>
-                        <button class="btn-v btn-v-outline py-1" onclick="fetchInventory(this)"><i class="fa-solid fa-rotate"></i> RELOAD</button>
-                    </div>
-                    <div id="inv-history" class="inv-history-container"></div>
-                </div>
-            </div>
-
-            <!-- Settings -->
-            <div id="settings" class="tab-content">
-                <div class="row">
-                    <div class="col-md-6">
-                        <div class="v-card">
-                            <div class="card-title"><i class="fa-solid fa-wifi"></i> NETWORK TOPOLOGY</div>
-                            <label class="text-white-50 small mb-2">TARGET SSID</label>
-                            <div class="input-group-v">
-                                <input type="text" class="v-input" id="conf-ssid" placeholder="Select or type SSID">
-                                <button class="btn-v btn-v-outline" onclick="scanWiFi(this)" style="padding: 0 15px;"><i class="fa-solid fa-magnifying-glass"></i> SCAN</button>
-                            </div>
-                            <div id="wifi-scan-results" style="max-height: 150px; overflow-y: auto; background: #000; border-radius: 8px; margin-bottom: 1rem; display: none; border: 1px solid #333;"></div>
-                            <label class="text-white-50 small mb-2">SECURITY KEY</label>
-                            <div class="input-group-v">
-                                <input type="password" class="v-input" id="conf-pass">
-                                <i class="fa-solid fa-eye eye-icon" onclick="togglePass('conf-pass', this)"></i>
-                            </div>
-                            <button class="btn-v btn-v-orange w-100" id="btn-save-net" onclick="saveNetwork()"><i class="fa-solid fa-save me-2"></i>SAVE & CONNECT</button>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="v-card">
-                            <div class="card-title"><i class="fa-solid fa-gears"></i> SYSTEM CONFIG</div>
-                            <label class="text-white-50 small mb-2">GOOGLE SCRIPT ID</label>
-                            <input type="text" class="v-input mb-3" id="conf-script">
-                            
-                            <label class="text-white-50 small mb-2">ADMIN NAME</label>
-                            <input type="text" class="v-input mb-3" id="conf-admin-user">
-                            
-                            <label class="text-white-50 small mb-2">ADMIN PASSWORD</label>
-                            <div class="input-group-v mb-3">
-                                <input type="password" class="v-input" id="conf-admin-pass">
-                                <i class="fa-solid fa-eye eye-icon" onclick="togglePass('conf-admin-pass', this)"></i>
-                            </div>
-                            
-                            <button class="btn-v btn-v-green w-100" id="btn-save-sys" onclick="saveSystem()"><i class="fa-solid fa-save me-2"></i>SAVE & REBOOT</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="v-card mb-4">
-                    <div class="card-title text-info"><i class="fa-solid fa-cloud-arrow-up"></i> SYSTEM FIRMWARE & OTA UPGRADE</div>
-                    <div class="row align-items-center">
-                        <div class="col-md-6 mb-3 mb-md-0">
-                            <div class="d-flex align-items-center mb-2">
-                                <span class="text-white-50 me-2">Local Version:</span>
-                                <span class="fw-bold text-success" id="firmware-local-version">v7.0.1-ELITE</span>
-                            </div>
-                            <div class="d-flex align-items-center mb-3">
-                                <span class="text-white-50 me-2">Latest Online:</span>
-                                <span class="fw-bold text-warning" id="firmware-online-version">Checking...</span>
-                            </div>
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="ota-auto-update" checked onclick="toggleAutoUpdate(this)">
-                                <label class="form-check-label text-white-50 small" for="ota-auto-update">Enable Automatic Updates (Checks on Boot)</label>
-                            </div>
-                        </div>
-                        <div class="col-md-6 text-md-end">
-                            <button class="btn-v btn-v-outline me-2 mb-2" onclick="checkFirmwareVersion()"><i class="fa-solid fa-arrows-rotate me-2"></i>CHECK FOR UPDATE</button>
-                            <button class="btn-v btn-v-green mb-2" id="btn-trigger-update" onclick="triggerOTAUpdate()" disabled><i class="fa-solid fa-circle-down me-2"></i>INSTALL UPDATE</button>
-                        </div>
-                    </div>
-                    <div id="ota-progress-container" class="mt-3 d-none">
-                        <div class="progress bg-dark" style="height: 10px; border: 1px solid #333; border-radius: 5px;">
-                            <div id="ota-progress-bar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                        </div>
-                        <div class="text-white-50 small mt-1" id="ota-status-text">Downloading...</div>
-                    </div>
-
-                    <!-- OTA Update Configuration Form -->
-                    <div class="border-top border-dark pt-3 mt-3">
-                        <div class="card-title text-info small mb-3" style="font-size: 1rem;"><i class="fa-solid fa-gear"></i> OTA Update Configuration</div>
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="text-white-50 small mb-2 d-block">Update Source</label>
-                                <div class="form-check form-check-inline me-3 d-inline-block">
-                                    <input class="form-check-input" type="radio" name="ota-source" id="ota-source-gdrive" value="gdrive" checked onclick="toggleOtaFields()">
-                                    <label class="form-check-label text-white-50" for="ota-source-gdrive">Google Drive (Apps Script)</label>
-                                </div>
-                                <div class="form-check form-check-inline d-inline-block">
-                                    <input class="form-check-input" type="radio" name="ota-source" id="ota-source-github" value="github" onclick="toggleOtaFields()">
-                                    <label class="form-check-label text-white-50" for="ota-source-github">GitHub Release (JSON Link)</label>
-                                </div>
-                            </div>
-                            <div class="col-md-6 mb-3" id="ota-id-group">
-                                <label class="text-white-50 small mb-1">Apps Script ID (Optional fallback to default)</label>
-                                <input type="text" class="form-control bg-dark text-white border-secondary" id="ota-script-id" placeholder="Enter custom Script ID">
-                            </div>
-                            <div class="col-md-6 mb-3" id="ota-link-group" style="display: none;">
-                                <label class="text-white-50 small mb-1">GitHub Version JSON Link</label>
-                                <input type="text" class="form-control bg-dark text-white border-secondary" id="ota-github-link" placeholder="https://raw.githubusercontent.com/.../version.json">
-                            </div>
-                            <div class="col-md-12 text-md-end mt-2">
-                                <button class="btn-v btn-v-outline me-2" onclick="testOtaConnection(this)"><i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION</button>
-                                <button class="btn-v btn-v-green" onclick="saveOtaConfig(this)"><i class="fa-solid fa-save me-2"></i>SAVE CONFIG</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="v-card">
-                    <div class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ADVANCED RECOVERY</div>
-                    <p class="text-white-50 small mb-4">Factory reset wipes all local NVS memory (WiFi, Script ID). Device will reboot in AP mode.</p>
-                    <button class="btn-v btn-v-red w-100" onclick="factoryReset()">WIPE DEVICE & RESET</button>
-                </div>
-            </div>
-
-            <!-- Verify Tab -->
-            <div id="verify" class="tab-content">
-                <div class="v-card">
-                    <div class="card-title"><i class="fa-solid fa-magnifying-glass"></i> INSTANT RFID PROFILER</div>
-                    <div class="input-group-v mb-4">
-                        <input type="text" class="v-input mb-0" id="verify-search-input" placeholder="Enter Tag ID or Scan Card">
-                        <button class="btn-v btn-v-orange" id="btn-start-verify" onclick="startVerifyFlow()" title="Capture via Hardware">
-                            <i class="fa-solid fa-crosshairs"></i> CAPTURE
-                        </button>
-                        <button class="btn-v btn-v-outline" onclick="performLookup()" title="Manual Search"><i class="fa-solid fa-search"></i></button>
-                        <button class="btn-v btn-v-outline text-danger" onclick="resetVerifyUI()" title="Clear"><i class="fa-solid fa-trash-can"></i></button>
-                    </div>
-                    <div id="verify-loader" style="display:none;" class="text-center p-4">
-                        <div class="spinner-border text-warning" role="status"></div>
-                        <div class="mt-2 small text-white-50">SYNCING PROFILE...</div>
-                    </div>
-                    <div id="verify-results"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Toast UI -->
-    <div id="toast" class="toast-v">
-        <i class="fa-solid fa-circle-check me-2"></i> <span id="toast-msg"></span>
-    </div>
-
-    <script>
-        // --- System Globals ---
-        let pollTimer = null;
-
-        // --- Core Functions ---
-        function togglePass(id, el) {
-            const inp = document.getElementById(id);
-            if (inp.type === 'password') {
-                inp.type = 'text';
-                el.classList.replace('fa-eye', 'fa-eye-slash');
-            } else {
-                inp.type = 'password';
-                el.classList.replace('fa-eye-slash', 'fa-eye');
-            }
-        }
-
-        function toggleSerial() {
-            const sm = document.getElementById('serial-monitor');
-            sm.style.display = sm.style.display === 'none' ? 'block' : 'none';
-        }
-
-        function logSerial(msg) {
-            const out = document.getElementById('serial-out');
-            const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
-            const line = document.createElement('div');
-            line.style.fontSize = '0.75rem';
-            line.innerHTML = `<span style="color:#555;">[${now}]</span> <span style="color:#0f0;">${msg}</span>`;
-            out.appendChild(line);
-            out.scrollTop = out.scrollHeight;
-        }
-
-        function clearSerial() { document.getElementById('serial-out').innerHTML = ''; }
-
-        // --- Hardware API Interface ---
-        async function fetchAPI(endpoint, params = {}) {
-            try {
-                const url = new URL(endpoint, window.location.origin);
-                Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
-                const res = await fetch(url);
-                const text = await res.text();
-                try {
-                  return JSON.parse(text);
-                } catch(e) {
-                  // Fallback for non-JSON responses
-                  if (endpoint !== '/serial_data') {
-                    console.error("JSON Parse Error at " + endpoint + ":", text);
-                  }
-                  return text; 
-                }
-            } catch (err) {
-                console.error("Fetch failure:", endpoint, err);
-                return null;
-            }
-        }
-
-        // --- Polling Logic ---
-        let settingsInitialized = false;
-        async function startPolling() {
-            if (pollTimer) clearInterval(pollTimer);
-            pollTimer = setInterval(async () => {
-                const data = await fetchAPI('/status');
-                if (data && typeof data === 'object') {
-                    updateDashboard(data);
-                    if (!settingsInitialized && data.script_id) {
-                        document.getElementById('conf-script').value = data.script_id;
-                        document.getElementById('conf-ssid').value = data.saved_ssid || '';
-                        document.getElementById('conf-admin-user').value = data.dev_user || 'admin';
-                        document.getElementById('conf-admin-pass').value = data.dev_pass || 'password123';
-                        if (data.auto_update !== undefined) {
-                            document.getElementById('ota-auto-update').checked = data.auto_update;
-                        }
-                        if (data.ota_source === 'github') {
-                            document.getElementById('ota-source-github').checked = true;
-                        } else {
-                            document.getElementById('ota-source-gdrive').checked = true;
-                        }
-                        document.getElementById('ota-script-id').value = data.ota_id || '';
-                        document.getElementById('ota-github-link').value = data.ota_link || '';
-                        if (typeof toggleOtaFields === 'function') toggleOtaFields();
-                        settingsInitialized = true;
-                    }
-                }
-                
-                // Fetch real hardware logs
-                const logs = await fetchAPI('/serial_data');
-                if (logs && typeof logs === 'string' && logs.trim()) {
-                  logs.split('\n').forEach(line => {
-                    if (line.trim()) logSerial(line);
-                  });
-                }
-            }, 1000); // 1s interval for better real-time sync
-        }
-
-        function updateDashboard(d) {
-            // Update Status Icons
-            document.getElementById('stat-mcu').className = `fa-solid fa-microchip stat-icon ${d.mcu ? 'stat-online' : 'stat-offline'}`;
-            document.getElementById('stat-net').className = `fa-solid fa-network-wired stat-icon ${d.net ? 'stat-online' : 'stat-offline'}`;
-            document.getElementById('stat-db').className = `fa-solid fa-database stat-icon ${d.db ? 'stat-online' : 'stat-offline'}`;
-            document.getElementById('stat-wifi').className = `fa-solid fa-wifi stat-icon ${d.wifi ? 'stat-online' : 'stat-offline'}`;
-
-            // Update Text
-            document.getElementById('disp-dev-name').innerText = d.name || '--';
-            document.getElementById('disp-ip').innerText = d.ip || '0.0.0.0';
-            document.getElementById('disp-mac').innerText = d.mac || '--';
-            document.getElementById('disp-script').innerText = d.script ? 'DEPLOYED' : 'NOT SET';
-            document.getElementById('disp-rssi').innerText = (d.rssi || 0) + ' dBm';
-
-            // Update Live Card if data present
-            const statusEl = document.getElementById('live-status');
-            const nameEl = document.getElementById('live-name');
-            const uidEl = document.getElementById('live-uid');
-            const msgEl = document.getElementById('live-status-msg');
-
-            if (d.loading) {
-                statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>VALIDATING';
-                uidEl.innerText = d.last_uid;
-                nameEl.innerText = 'CONTACTING CLOUD...';
-                msgEl.innerText = '';
-            } else if (d.last_uid && d.last_uid !== "--------" && d.last_uid !== "0") {
-                statusEl.innerText = (d.process_step === 'Ready' || d.process_step === 'None') ? d.mode : d.process_step.toUpperCase();
-                uidEl.innerText = d.last_uid;
-                nameEl.innerText = (d.last_user && d.last_user !== '---') ? d.last_user : 'SCAN COMPLETED';
-                msgEl.innerText = d.detailed_status || d.last_status_msg || "";
-            } else {
-                statusEl.innerText = d.mode;
-                uidEl.innerText = 'WAITING FOR CARD...';
-                nameEl.innerText = '---';
-                msgEl.innerText = d.last_status_msg || "";
-            }
-        }
-
-        // --- Auth & Tabs ---
-        async function handleLogin() {
-            const u = document.getElementById('admin-user').value;
-            const p = document.getElementById('admin-pass').value;
-            const r = document.getElementById('admin-remember').checked ? 1 : 0;
-            
-            // Note: Sending to hardware for real auth check
-            const res = await fetchAPI('/login', { u, p, r });
-            if (res && res.success) {
-                document.getElementById('login-overlay').style.display = 'none';
-                document.getElementById('app-ui').style.display = 'block';
-                logSerial("GSV_OS: Dashboard Access Authorized.");
-                startPolling();
-                fetchLogs();
-            } else {
-                showToast("Access Denied", "danger");
-            }
-        }
-
-        function switchTab(id, el) {
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-            document.getElementById(id).classList.add('active');
-            el.classList.add('active');
-            
-            // Sync hardware mode with tab where appropriate
-            if (id === 'verify') setMode('VERIFY');
-            else if (id === 'inventory') setMode('INV');
-            else if (id === 'attendance') setMode('IN');
-            
-            logSerial(`UI: Switched to ${id.toUpperCase()}`);
-        }
-
-        async function checkFirmwareVersion() {
-            logSerial("Checking firmware version...");
-            const onlineVerEl = document.getElementById('firmware-online-version');
-            if (onlineVerEl) onlineVerEl.innerText = "Checking...";
-            
-            try {
-                const res = await fetchAPI('/check_version');
-                if (res && res.success) {
-                    onlineVerEl.innerText = res.latest;
-                    const btn = document.getElementById('btn-trigger-update');
-                    if (res.updateAvailable) {
-                        showToast(`New firmware ${res.latest} available!`, "warning");
-                        logSerial(`Firmware update available! Current: v7.0.1-ELITE, Latest: ${res.latest}`);
-                        if (btn) btn.disabled = false;
-                    } else {
-                        showToast("Firmware is up to date", "green");
-                        logSerial("Firmware is up to date.");
-                        if (btn) btn.disabled = true;
-                    }
-                } else {
-                    onlineVerEl.innerText = "Error checking";
-                    showToast("Failed to check version", "danger");
-                }
-            } catch (err) {
-                onlineVerEl.innerText = "Error";
-                showToast("Error checking version", "danger");
-            }
-        }
-
-        function toggleOtaFields() {
-            const isGithub = document.getElementById('ota-source-github').checked;
-            const idGroup = document.getElementById('ota-id-group');
-            const linkGroup = document.getElementById('ota-link-group');
-            if (isGithub) {
-                if (idGroup) idGroup.style.display = 'none';
-                if (linkGroup) linkGroup.style.display = 'block';
-            } else {
-                if (idGroup) idGroup.style.display = 'block';
-                if (linkGroup) linkGroup.style.display = 'none';
-            }
-        }
-
-        async function saveOtaConfig(btn) {
-            const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
-            const id = document.getElementById('ota-script-id').value.trim();
-            const link = document.getElementById('ota-github-link').value.trim();
-            
-            if (btn) btn.disabled = true;
-            try {
-                const res = await fetchAPI('/save_ota', { source, id, link });
-                if (res && res.success) {
-                    showToast("OTA configuration saved successfully!", "green");
-                    logSerial("OTA update source configuration saved.");
-                } else {
-                    showToast(res.message || "Failed to save OTA configuration", "danger");
-                }
-            } catch (err) {
-                showToast("Error saving OTA configuration", "danger");
-            } finally {
-                if (btn) btn.disabled = false;
-            }
-        }
-
-        async function testOtaConnection(btn) {
-            const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
-            const id = document.getElementById('ota-script-id').value.trim();
-            const link = document.getElementById('ota-github-link').value.trim();
-            
-            if (btn) {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Testing...';
-            }
-            logSerial(`Testing OTA connection to source: ${source}...`);
-            try {
-                const res = await fetchAPI('/test_ota', { source, id, link });
-                if (res && res.success) {
-                    showToast("OTA connection test passed! Server reachable.", "green");
-                    logSerial(`OTA Connection test success: HTTP ${res.code}.`);
-                } else {
-                    showToast(res.message || "OTA connection test failed", "danger");
-                    logSerial(`OTA Connection test fail: HTTP ${res.code || 'error'} - ${res.message}.`);
-                }
-            } catch (err) {
-                showToast("Error testing connection", "danger");
-                logSerial(`OTA Connection test exception: ${err}`);
-            } finally {
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION';
-                }
-            }
-        }
-
-        async function toggleAutoUpdate(el) {
-            const enabled = el.checked;
-            const res = await fetchAPI('/toggle_auto_update', { enabled: enabled ? "1" : "0" });
-            if (res && res.success) {
-                showToast(`Auto update ${enabled ? 'enabled' : 'disabled'}`, "green");
-                logSerial(`Auto update preference updated: ${enabled}`);
-            } else {
-                showToast("Failed to save preference", "danger");
-                el.checked = !enabled; // revert
-            }
-        }
-
-        async function triggerOTAUpdate() {
-            if (!confirm("Are you sure you want to install the update? The device will restart.")) return;
-            
-            const pBar = document.getElementById('ota-progress-bar');
-            const pCont = document.getElementById('ota-progress-container');
-            const sText = document.getElementById('ota-status-text');
-            const btn = document.getElementById('btn-trigger-update');
-            
-            if (pCont) pCont.classList.remove('d-none');
-            if (pBar) pBar.style.width = "20%";
-            if (sText) sText.innerText = "Initiating upgrade...";
-            if (btn) btn.disabled = true;
-            
-            logSerial("Starting OTA firmware update...");
-            
-            try {
-                const res = await fetchAPI('/trigger_update');
-                if (res && res.success) {
-                    if (pBar) pBar.style.width = "100%";
-                    if (sText) sText.innerText = "Updating... Device rebooting.";
-                    showToast("Firmware updating! Rebooting device...", "green");
-                    logSerial("OTA Update triggered successfully. Device rebooting...");
-                } else {
-                    if (pCont) pCont.classList.add('d-none');
-                    if (sText) sText.innerText = "Update failed";
-                    if (btn) btn.disabled = false;
-                    showToast(res.message || "Update failed", "danger");
-                    logSerial("OTA Update failed: " + (res.message || "unknown error"));
-                }
-            } catch (err) {
-                if (pCont) pCont.classList.add('d-none');
-                if (btn) btn.disabled = false;
-                showToast("Connection lost during update. Check device state.", "danger");
-                logSerial("Connection lost. Device may be updating and rebooting.");
-            }
-        }
-
-        async function setMode(m) {
-            const res = await fetchAPI('/mode', { m: m });
-            if (res && res.success) {
-                showToast(`System Mode: ${m}`, "green");
-                logSerial(`UI: Hardware mode manually set to ${m}`);
-                // Immediate update of status if polling hasn't hit yet
-                const statusEl = document.getElementById('live-status');
-                if (statusEl) statusEl.innerText = m;
-            } else {
-                showToast("Failed to switch mode", "danger");
-            }
-        }
-
-        // --- Functional Actions ---
-        let captureActive = false;
-        async function startCaptureFlow() {
-            if (captureActive) return;
-            captureActive = true;
-
-            const el = document.getElementById('capture-uid');
-            const msg = document.getElementById('capture-msg');
-            const btn = document.getElementById('btn-capture');
-            const icon = btn.querySelector('i');
-            
-            el.innerText = "SCAN NOW";
-            el.style.color = "var(--v-orange)";
-            msg.innerText = "Bring an unassigned card near the sensor...";
-            icon.className = 'fa-solid fa-spinner fa-spin';
-
-            // Reset current capture on hardware
-            await fetchAPI('/capture', { reset: '1' });
-            logSerial("Capture: Waiting for new card... (Hardware capture reset)");
-
-            // Polling for detection
-            let attempts = 0;
-            const pollInt = setInterval(async () => {
-                const res = await fetchAPI('/capture');
-                if (res && res.uid && res.uid !== "--------") {
-                    el.innerText = res.uid;
-                    el.style.color = "var(--v-green)";
-                    msg.innerText = "TAG DETECTED! Use save below.";
-                    document.getElementById('cloud-save-btn').style.display = "inline-flex";
-                    icon.className = 'fa-solid fa-crosshairs';
-                    captureActive = false;
-                    clearInterval(pollInt);
-                }
-                attempts++;
-                if (attempts > 30) { // 30s timeout
-                    el.innerText = "TIMEOUT";
-                    el.style.color = "var(--v-red)";
-                    msg.innerText = "No card detected. Try again.";
-                    icon.className = 'fa-solid fa-crosshairs';
-                    captureActive = false;
-                    clearInterval(pollInt);
-                }
-            }, 1000);
-        }
-
-        async function pushToCloud() {
-            const btn = document.getElementById('cloud-save-btn');
-            const icon = btn.querySelector('i');
-            const uid = document.getElementById('capture-uid').innerText;
-            
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            const res = await fetchAPI('/sync', { uid });
-            icon.className = 'fa-solid fa-cloud-arrow-up';
-            
-            if (res) {
-                showToast('Cloud Sync Success', 'green');
-                document.getElementById('cloud-save-btn').style.display = "none";
-                fetchInventory();
-            } else {
-                showToast('Cloud Sync Failed', 'danger');
-            }
-        }
-
-        async function saveNetwork() {
-            const btn = document.getElementById('btn-save-net');
-            const icon = btn.querySelector('i');
-            const ssid = document.getElementById('conf-ssid').value;
-            const pass = document.getElementById('conf-pass').value;
-            
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            const res = await fetchAPI('/save_net', { ssid, pass });
-            icon.className = 'fa-solid fa-save';
-            
-            if (res) {
-              showToast('WiFi Settings Saved. Applying...', 'green');
-              logSerial("GSV_OS: WiFi Credentials committed to NVS.");
-            } else {
-              showToast('Hardware Connection Error', 'danger');
-            }
-        }
-
-        async function scanWiFi(btn) {
-            const icon = btn.querySelector('i');
-            const orig = icon.className;
-            const resDiv = document.getElementById('wifi-scan-results');
-            
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            resDiv.innerHTML = '<div class="p-2 small text-white-50">Searching...</div>';
-            resDiv.style.display = 'block';
-            
-            const res = await fetchAPI('/scan_wifi');
-            icon.className = orig;
-            
-            if (res && res.length > 0) {
-                resDiv.innerHTML = res.map(w => `
-                    <div class="p-2 border-bottom border-dark small d-flex justify-content-between" style="cursor:pointer;" onclick="selectSSID('${w.ssid}')">
-                        <span>${w.ssid}</span>
-                        <span class="text-white-50">${w.rssi} dBm</span>
-                    </div>
-                `).join('');
-                showToast(`Found ${res.length} networks`, 'green');
-            } else {
-                resDiv.innerHTML = '<div class="p-2 small text-danger">No networks found</div>';
-                showToast("Scan failed or no networks", "danger");
-            }
-        }
-
-        function selectSSID(s) {
-            document.getElementById('conf-ssid').value = s;
-            document.getElementById('wifi-scan-results').style.display = 'none';
-        }
-
-        async function saveSystem() {
-            const btn = document.getElementById('btn-save-sys');
-            const icon = btn.querySelector('i');
-            const script = document.getElementById('conf-script').value;
-            const user = document.getElementById('conf-admin-user').value;
-            const pass = document.getElementById('conf-admin-pass').value;
-            
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            const res = await fetchAPI('/save_sys', { script, adminUser: user, adminPass: pass });
-            icon.className = 'fa-solid fa-save';
-            
-            if (res) {
-              showToast('System Rebooting in 3s...', 'green');
-              logSerial("GSV_OS: System parameters updated. Restarting...");
-              setTimeout(() => { 
-                window.location.href = "http://vvarma-rfid.local/dashboard";
-              }, 4000);
-            } else {
-              showToast('Hardware Connection Error', 'danger');
-            }
-        }
-
-        async function factoryReset() {
-            if(confirm("DANGER: This will wipe all system data. Continue?")) {
-                await fetchAPI('/factory_reset');
-                window.location.reload();
-            }
-        }
-
-        async function resetCapture() {
-            await fetchAPI('/capture', { reset: '1' });
-            document.getElementById('capture-uid').innerText = "--------";
-            document.getElementById('capture-msg').innerText = "Card capture cleared";
-            document.getElementById('cloud-save-btn').style.display = "none";
-            showToast("Capture Ready", "orange");
-        }
-
-        // --- List Rendering ---
-        async function fetchLogs(btn) {
-            let icon, orig;
-            if (btn) {
-                icon = btn.querySelector('i');
-                orig = icon.className;
-                icon.className = 'fa-solid fa-spinner fa-spin';
-            }
-            
-            const data = await fetchAPI('/logs');
-            if (btn) icon.className = orig;
-            
-            const list = document.getElementById('log-list');
-            if (!data || data.length === 0) { 
-                list.innerHTML = `<p class="text-center text-white-50 p-4">No Students Available (Today/Yesterday)</p>`; 
-                return; 
-            }
-            
-            list.innerHTML = data.map(l => {
-                const statusColor = (l.status || '').toUpperCase() === 'LATE' ? 'var(--v-orange)' : 'var(--v-green)';
-                return `
-                <div class="hist-item p-3 mb-2" style="background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 4px solid ${statusColor};">
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div>
-                            <div class="fw-bold text-white fs-5">${l.name}</div>
-                            <div class="small text-white-50">${l.regId} | ${l.date}</div>
-                        </div>
-                        <div class="badge" style="background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}44;">
-                            ${(l.status || 'PRESENT').toUpperCase()}
-                        </div>
-                    </div>
-                    
-                    <div class="row g-2 small">
-                        <div class="col-6">
-                            <i class="fa-solid fa-users-gear me-1 text-white-50"></i> BATCH: <span class="text-white">${l.batch}</span>
-                        </div>
-                        <div class="col-6">
-                            <i class="fa-solid fa-clock me-1 text-white-50"></i> SLOT: <span class="text-white">${l.slot}</span>
-                        </div>
-                        <div class="col-6">
-                            <i class="fa-solid fa-business-time me-1 text-white-50"></i> PERIOD: <span class="text-white">${l.period}</span>
-                        </div>
-                        <div class="col-6">
-                            <i class="fa-solid fa-hourglass-start me-1 text-white-50"></i> IN: <span class="text-green fw-bold">${l.inTime}</span>
-                        </div>
-                        <div class="col-6 offset-6">
-                            <i class="fa-solid fa-hourglass-end me-1 text-white-50"></i> OUT: <span class="text-orange fw-bold">${l.outTime}</span>
-                        </div>
-                    </div>
-                </div>
-                `;
-            }).join('');
-        }
-
-        async function fetchInventory(btn) {
-            let icon, orig;
-            if (btn) {
-                icon = btn.querySelector('i');
-                orig = icon.className;
-                icon.className = 'fa-solid fa-spinner fa-spin';
-            }
-            
-            const data = await fetchAPI('/inventory');
-            if (btn) icon.className = orig;
-            
-            const list = document.getElementById('inv-history');
-            if (!data || data.length === 0) { list.innerHTML = `<p class="text-center text-white-50">Empty</p>`; return; }
-            list.innerHTML = data.map(i => {
-                let statusColor = i.status === 'Available' ? 'var(--v-green)' : 'var(--v-orange)';
-                let details = (i.status === 'Available' || (!i.name && !i.studentName))
-                    ? `<div class="small text-white-50">AVAILABLE SINCE: ${i.date || '---'}</div>`
-                    : `
-                        <div class="small text-white-80">NAME: ${i.name || i.studentName || '---'}</div>
-                        <div class="small text-white-50">REG_NO: ${i.reg_no || i.regNo || '---'} | ID: ${i.reg_id || i.regId || '---'}</div>
-                        <div class="small text-white-50">COLL: ${i.college || '---'} | DEPT: ${i.dept || i.department || '---'}</div>
-                        <div class="small text-white-50">BATCH: ${i.batch || '---'}</div>
-                      `;
-                return `
-                <div class="hist-item d-block text-start p-3" style="border-bottom: 1px solid #333; transition: 0.3s; cursor: pointer;" onmouseover="this.style.background='#222'" onmouseout="this.style.background='transparent'">
-                    <div class="d-flex justify-content-between">
-                        <div class="text-warning fw-bold">${i.uid}</div>
-                        <div style="color:${statusColor}; font-weight:800; font-size:0.7rem;">${(i.status || 'AVAILABLE').toUpperCase()}</div>
-                    </div>
-                    ${details}
-                </div>
-                `;
-            }).join('');
-        }
-
-        let verifyActive = false;
-        async function startVerifyFlow() {
-            if (verifyActive) return;
-            verifyActive = true;
-
-            const input = document.getElementById('verify-search-input');
-            const btn = document.getElementById('btn-start-verify');
-            const icon = btn.querySelector('i');
-            
-            input.value = "READING CARD...";
-            icon.className = 'fa-solid fa-spinner fa-spin';
-            
-            // Switch hardware to VERIFY mode
-            await fetchAPI('/mode', { m: 'VERIFY' });
-            await fetchAPI('/capture', { reset: '1' });
-            
-            let attempts = 0;
-            const poll = setInterval(async () => {
-                const res = await fetchAPI('/capture');
-                if (res && res.uid && res.uid !== "--------") {
-                    input.value = res.uid;
-                    clearInterval(poll);
-                    verifyActive = false;
-                    icon.className = 'fa-solid fa-crosshairs';
-                    performLookup();
-                }
-                attempts++;
-                if (attempts > 20) {
-                    clearInterval(poll);
-                    verifyActive = false;
-                    icon.className = 'fa-solid fa-crosshairs';
-                    input.value = "";
-                    showToast("Verify Timeout", "danger");
-                }
-            }, 1000);
-        }
-
-        async function performLookup() {
-            const uid = document.getElementById('verify-search-input').value;
-            if (!uid || uid.length < 4) return;
-            
-            const loader = document.getElementById('verify-loader');
-            const results = document.getElementById('verify-results');
-            
-            loader.style.display = 'block';
-            results.innerHTML = '';
-            
-            const res = await fetchAPI('/validate', { action: 'check', uid: uid });
-            loader.style.display = 'none';
-            
-            if (res && res.status === 'success') {
-                renderVerifyResults(res, uid);
-            } else {
-                let isNewCard = false;
-                if (res && res.message && (res.message.toLowerCase().includes('not in') || res.message.toLowerCase().includes('unknown'))) {
-                    isNewCard = true;
-                }
-                
-                if (isNewCard) {
-                    results.innerHTML = `
-                        <div class="alert border-0 bg-dark text-white text-center py-4" style="border-radius:15px; border:2px dashed var(--v-orange)!important;">
-                            <i class="fa-solid fa-id-card fs-1 mb-3" style="color:var(--v-orange);"></i>
-                            <h4 class="fw-bold text-orange" style="color:var(--v-orange);">NEW CARD SCANNED</h4>
-                            <p class="mb-3 text-white-50">This RFID card [${uid}] is a new card and not in inventory.</p>
-                            <button class="btn-v btn-v-orange px-4" onclick="switchTab('inventory', this); setTimeout(()=>startCaptureFlow(), 500);">
-                                <i class="fa-solid fa-plus me-2"></i>ADD TO INVENTORY
-                            </button>
-                        </div>
-                    `;
-                } else {
-                    results.innerHTML = `
-                        <div class="alert alert-danger border-0 bg-danger bg-opacity-10 text-danger text-center py-4">
-                            <i class="fa-solid fa-circle-exclamation fs-1 mb-2"></i>
-                            <h4 class="fw-bold">TAG NOT FOUND</h4>
-                            <p class="mb-0">${(res && res.message) ? res.message : `This RFID card [${uid}] validation failed.`}</p>
-                        </div>
-                    `;
-                }
-            }
-        }
-
-        function renderVerifyResults(d, uid) {
-            const results = document.getElementById('verify-results');
-            const s = d.student || d;
-            const inv = d.inventory || {};
-            
-            if (!s || (!s.name && !s.studentName) || s.name === "UNAUTHORIZED" || s.name === "Unknown" || s.name === "---") {
-                results.innerHTML = `
-                    <div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning text-center py-4">
-                        <i class="fa-solid fa-box-open fs-1 mb-3"></i>
-                        <h4 class="fw-bold">AVAILABLE IN INVENTORY</h4>
-                        <p class="mb-3">This tag is available in inventory but not assigned to any student. You can assign it.</p>
-                        <div class="small text-white-50 mb-3">Inventory Added By: ${inv.AddedBy || 'Admin'} | Date: ${inv.AddedDate || '---'}</div>
-                        <button class="btn-v btn-v-green px-4" onclick="switchTab('settings', this);">
-                            <i class="fa-solid fa-user-plus me-2"></i>ASSIGN STUDENT IN SETTINGS
-                        </button>
-                    </div>
-                `;
-                return;
-            }
-
-            results.innerHTML = `
-                <div class="v-card border-success" style="border-left-color: var(--v-green);">
-                    <div class="row align-items-center mb-4">
-                        <div class="col-auto">
-                            <div class="bg-success bg-opacity-10 p-3 rounded-circle" style="width:70px; height:70px; display:flex; align-items:center; justify-content:center;">
-                                <i class="fa-solid fa-user-check text-success fs-1"></i>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <h3 class="fw-bold text-white mb-0 text-uppercase">${s.name || s.studentName || '---'}</h3>
-                            <div class="text-success small fw-bold"><i class="fa-solid fa-shield-halved me-1"></i> VERIFIED POSITIVE</div>
-                        </div>
-                    </div>
-                    
-                    <div class="row g-3">
-                        <div class="col-md-6 border-end border-dark">
-                            <div class="mb-3">
-                                <label class="text-white-50 x-small text-uppercase">Registration ID</label>
-                                <div class="text-white fw-bold">${s.regId || s.reg_id || '---'}</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="text-white-50 x-small text-uppercase">Register Number</label>
-                                <div class="text-white fw-bold">${s.regNo || s.reg_no || '---'}</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="text-white-50 x-small text-uppercase">College / University</label>
-                                <div class="text-white small">${s.college || '---'}</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <label class="text-white-50 x-small text-uppercase">Batch Allocation</label>
-                                <div class="text-orange fw-bold">${s.batch || '---'}</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="text-white-50 x-small text-uppercase">Department</label>
-                                <div class="text-white fw-bold">${s.dept || s.department || '---'}</div>
-                            </div>
-                            <div class="row">
-                                <div class="col-6">
-                                    <label class="text-white-50 x-small text-uppercase">Start Date</label>
-                                    <div class="text-white small">${s.startDate || '---'}</div>
-                                </div>
-                                <div class="col-6">
-                                    <label class="text-white-50 x-small text-uppercase">End Date</label>
-                                    <div class="text-white small">${s.endDate || '---'}</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-4 pt-3 border-top border-dark d-flex justify-content-between align-items-center">
-                        <div>
-                            <span class="text-white-50 small">Tag Status:</span>
-                            <span class="badge bg-success ms-1">${s.status || 'ACTIVE'}</span>
-                        </div>
-                        <div class="text-white-50 x-small">
-                            MSG: <span class="text-white font-monospace">${s.message || '---'}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        function resetVerifyUI() {
-            document.getElementById('verify-search-input').value = "";
-            document.getElementById('verify-results').innerHTML = "";
-            fetchAPI('/capture', { reset: '1' });
-        }
-
-        async function resetUI(btn) {
-            if(btn) {
-                const icon = btn.querySelector('i');
-                const orig = icon.className;
-                icon.className = 'fa-solid fa-spinner fa-spin';
-                await fetchAPI('/reset_display');
-                icon.className = orig;
-            } else {
-                await fetchAPI('/reset_display');
-            }
-            document.getElementById('live-status').innerText = "WAITING";
-            document.getElementById('live-uid').innerText = "READY FOR SCAN";
-            document.getElementById('live-name').innerText = "---";
-            document.getElementById('live-status-msg').innerText = "";
-            showToast("Display Reset", "green");
-        }
-
-        function showToast(msg, type = 'orange') {
-            const t = document.getElementById('toast');
-            document.getElementById('toast-msg').innerText = msg;
-            t.style.borderLeftColor = type === 'danger' ? 'var(--v-red)' : (type === 'green' ? 'var(--v-green)' : 'var(--v-orange)');
-            t.style.display = 'block';
-            setTimeout(() => { t.style.display = 'none'; }, 3000);
-        }
-        if (document.getElementById('app-ui').style.display === 'block') {
-            startPolling();
-        }
-    </script>
+<header class="v-header text-center">
+<div class="container">
+<div class="header-title text-white">
+<div class="header-logo">
+<!-- Updated Dashboard Header Logo to use custom V-Shield -->
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" class="v-shield-svg">
+<path d="M466.5 83.7l-192-80c-11.8-4.9-25.2-4.9-37 0l-192 80C27.3 91.3 16 108.3 16 128c0 198.5 114.5 335.7 221.5 380.3 11.8 4.9 25.1 4.9 36.9 0C381.5 463.7 496 326.5 496 128c0-19.7-11.3-36.7-29.5-44.3z" fill="currentColor"/>
+<path d="M160 160 C180 250 220 380 256 400 C300 350 340 220 360 160" fill="none" stroke="var(--v-blue)" stroke-width="45" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+</div>
+<div>V-VARMA RFID Attendance Management System</div>
+</div>
+<p class="text-white-50 small mt-1">GSV Electrical Enterprises | v1.1</p>
+<div class="nav-links-container">
+<div class="nav-tab active" onclick="switchTab('overview', this)">OVERVIEW</div>
+<div class="nav-tab" onclick="switchTab('attendance', this)">ATTENDANCE</div>
+<div class="nav-tab" onclick="switchTab('inventory', this)">RFID INVENTORY</div>
+<div class="nav-tab" onclick="switchTab('verify', this)">VERIFY RFID</div>
+<div class="nav-tab" onclick="switchTab('settings', this)">CONFIGURATION</div>
+</div>
+</div>
+<div class="status-container">
+<i class="fa-solid fa-terminal stat-icon" onclick="toggleSerial()" title="Serial Monitor" style="color:#888; cursor:pointer;"></i>
+<i class="fa-solid fa-microchip stat-icon stat-offline pulse" id="stat-mcu" title="Controller"></i>
+<i class="fa-solid fa-network-wired stat-icon stat-offline pulse" id="stat-net" title="Network"></i>
+<i class="fa-solid fa-database stat-icon stat-offline pulse" id="stat-db" title="Database"></i>
+<i class="fa-solid fa-wifi stat-icon stat-offline pulse" id="stat-wifi" title="WiFi"></i>
+</div>
+</header>
+<div class="container-custom">
+<!-- Serial Monitor -->
+<div id="serial-monitor">
+<div class="serial-header">
+<span><i class="fa-solid fa-terminal me-2"></i> HARDWARE SERIAL DATA FLOW</span>
+<button class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size: 0.6rem;" onclick="clearSerial()">CLEAR</button>
+</div>
+<div id="serial-out" class="serial-output"></div>
+</div>
+<!-- Overview -->
+<div id="overview" class="tab-content active">
+<div class="live-monitor">
+<div class="status-badge" id="live-status">SCAN READY</div>
+<div class="student-name" id="live-name">---</div>
+<div class="uid-text" id="live-uid">0000000000</div>
+<div id="live-status-msg" style="color: var(--v-orange); font-weight: 900; margin-top: 20px; font-size: 1.4rem; text-transform: uppercase; text-shadow: 0 0 15px rgba(243,156,18,0.5);"></div>
+</div>
+<div class="row">
+<div class="col-md-6">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-broadcast-tower"></i> DEVICE INFO</div>
+<div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Identity</span><span class="text-white" id="disp-dev-name">--</span></div>
+<div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Assigned IP</span><span class="text-white" id="disp-ip">--</span></div>
+<div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>MAC ID</span><span class="text-white small" id="disp-mac">--</span></div>
+</div>
+</div>
+<div class="col-md-6">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-cloud"></i> CLOUD STATUS</div>
+<div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Sync Engine</span><span class="text-white" id="disp-script">--</span></div>
+<div class="d-flex justify-content-between py-2 border-bottom border-dark"><span>Signal</span><span class="text-white" id="disp-rssi">--</span></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Attendance -->
+<div id="attendance" class="tab-content">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-sliders"></i> MODE CONTROL</div>
+<div class="d-flex gap-3 mb-4 flex-wrap">
+<button class="btn-v btn-v-green" onclick="setMode('IN')"><i class="fa-solid fa-right-to-bracket"></i> SET IN</button>
+<button class="btn-v btn-v-red" onclick="setMode('OUT')"><i class="fa-solid fa-right-from-bracket"></i> SET OUT</button>
+<button class="btn-v btn-v-orange" onclick="setMode('INV')"><i class="fa-solid fa-boxes-stacked"></i> SET INV</button>
+<button class="btn-v btn-v-outline" onclick="resetUI(this)"><i class="fa-solid fa-refresh"></i> CLEAR MONITOR</button>
+</div>
+<div class="card-title mt-4 d-flex justify-content-between align-items-center">
+<span><i class="fa-solid fa-clock-rotate-left"></i> LOG HISTORY</span>
+<button class="btn-v btn-v-outline py-1" onclick="fetchLogs(this)"><i class="fa-solid fa-rotate"></i> RELOAD</button>
+</div>
+<div id="log-list"></div>
+</div>
+</div>
+<!-- Inventory -->
+<div id="inventory" class="tab-content">
+<div class="v-card text-center" style="min-height: 250px;">
+<div class="card-title justify-content-center"><i class="fa-solid fa-id-card"></i> TAG REGISTRATION</div>
+<div class="d-flex justify-content-center gap-3 mb-4 flex-wrap">
+<button class="btn-v btn-v-orange" id="btn-capture" onclick="startCaptureFlow()"><i class="fa-solid fa-crosshairs"></i> START CAPTURE</button>
+<button class="btn-v btn-v-outline" onclick="resetCapture()"><i class="fa-solid fa-eraser"></i> REFRESH</button>
+<button class="btn-v btn-v-green" id="cloud-save-btn" style="display: none;" onclick="pushToCloud()">
+<i class="fa-solid fa-cloud-arrow-up"></i> SAVE TO CLOUD
+</button>
+</div>
+<div id="capture-uid" class="status-badge" style="font-size: 3rem; letter-spacing: 5px; color: var(--v-blue);">--------</div>
+<div id="capture-msg" class="text-white-50 small mt-2">Ready for card registration</div>
+</div>
+<div class="v-card">
+<div class="card-title d-flex justify-content-between align-items-center">
+<span><i class="fa-solid fa-history"></i> INVENTORY DATABASE</span>
+<button class="btn-v btn-v-outline py-1" onclick="fetchInventory(this)"><i class="fa-solid fa-rotate"></i> RELOAD</button>
+</div>
+<div id="inv-history" class="inv-history-container"></div>
+</div>
+</div>
+<!-- Settings -->
+<div id="settings" class="tab-content">
+<div class="row">
+<div class="col-md-6">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-wifi"></i> NETWORK TOPOLOGY</div>
+<label class="text-white-50 small mb-2">TARGET SSID</label>
+<div class="input-group-v">
+<input type="text" class="v-input" id="conf-ssid" placeholder="Select or type SSID">
+<button class="btn-v btn-v-outline" onclick="scanWiFi(this)" style="padding: 0 15px;"><i class="fa-solid fa-magnifying-glass"></i> SCAN</button>
+</div>
+<div id="wifi-scan-results" style="max-height: 150px; overflow-y: auto; background: #000; border-radius: 8px; margin-bottom: 1rem; display: none; border: 1px solid #333;"></div>
+<label class="text-white-50 small mb-2">SECURITY KEY</label>
+<div class="input-group-v">
+<input type="password" class="v-input" id="conf-pass">
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('conf-pass', this)"></i>
+</div>
+<button class="btn-v btn-v-orange w-100" id="btn-save-net" onclick="saveNetwork()"><i class="fa-solid fa-save me-2"></i>SAVE & CONNECT</button>
+</div>
+</div>
+<div class="col-md-6">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-gears"></i> SYSTEM CONFIG</div>
+<label class="text-white-50 small mb-2">GOOGLE SCRIPT ID</label>
+<input type="text" class="v-input mb-3" id="conf-script">
+<label class="text-white-50 small mb-2">ADMIN NAME</label>
+<input type="text" class="v-input mb-3" id="conf-admin-user">
+<label class="text-white-50 small mb-2">ADMIN PASSWORD</label>
+<div class="input-group-v mb-3">
+<input type="password" class="v-input" id="conf-admin-pass">
+<i class="fa-solid fa-eye eye-icon" onclick="togglePass('conf-admin-pass', this)"></i>
+</div>
+<button class="btn-v btn-v-green w-100" id="btn-save-sys" onclick="saveSystem()"><i class="fa-solid fa-save me-2"></i>SAVE & REBOOT</button>
+</div>
+</div>
+</div>
+<div class="v-card mb-4">
+<div class="card-title text-info"><i class="fa-solid fa-cloud-arrow-up"></i> SYSTEM FIRMWARE & OTA UPGRADE</div>
+<div class="row align-items-center">
+<div class="col-md-6 mb-3 mb-md-0">
+<div class="d-flex align-items-center mb-2">
+<span class="text-white-50 me-2">Local Version:</span>
+<span class="fw-bold text-success" id="firmware-local-version">v7.0.1-ELITE</span>
+</div>
+<div class="d-flex align-items-center mb-3">
+<span class="text-white-50 me-2">Latest Online:</span>
+<span class="fw-bold text-warning" id="firmware-online-version">Checking...</span>
+</div>
+<div class="form-check form-switch">
+<input class="form-check-input" type="checkbox" id="ota-auto-update" checked onclick="toggleAutoUpdate(this)">
+<label class="form-check-label text-white-50 small" for="ota-auto-update">Enable Automatic Updates (Checks on Boot)</label>
+</div>
+</div>
+<div class="col-md-6 text-md-end">
+<button class="btn-v btn-v-outline me-2 mb-2" onclick="checkFirmwareVersion()"><i class="fa-solid fa-arrows-rotate me-2"></i>CHECK FOR UPDATE</button>
+<button class="btn-v btn-v-green mb-2" id="btn-trigger-update" onclick="triggerOTAUpdate()" disabled><i class="fa-solid fa-circle-down me-2"></i>INSTALL UPDATE</button>
+</div>
+</div>
+<div id="ota-progress-container" class="mt-3 d-none">
+<div class="progress bg-dark" style="height: 10px; border: 1px solid #333; border-radius: 5px;">
+<div id="ota-progress-bar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+</div>
+<div class="text-white-50 small mt-1" id="ota-status-text">Downloading...</div>
+</div>
+<!-- OTA Update Configuration Form -->
+<div class="border-top border-dark pt-3 mt-3">
+<div class="card-title text-info small mb-3" style="font-size: 1rem;"><i class="fa-solid fa-gear"></i> OTA Update Configuration</div>
+<div class="row">
+<div class="col-md-12 mb-3">
+<label class="text-white-50 small mb-2 d-block">Update Source</label>
+<div class="form-check form-check-inline me-3 d-inline-block">
+<input class="form-check-input" type="radio" name="ota-source" id="ota-source-gdrive" value="gdrive" checked onclick="toggleOtaFields()">
+<label class="form-check-label text-white-50" for="ota-source-gdrive">Google Drive (Apps Script)</label>
+</div>
+<div class="form-check form-check-inline d-inline-block">
+<input class="form-check-input" type="radio" name="ota-source" id="ota-source-github" value="github" onclick="toggleOtaFields()">
+<label class="form-check-label text-white-50" for="ota-source-github">GitHub Release (JSON Link)</label>
+</div>
+</div>
+<div class="col-md-6 mb-3" id="ota-id-group">
+<label class="text-white-50 small mb-1">Apps Script ID (Optional fallback to default)</label>
+<input type="text" class="form-control bg-dark text-white border-secondary" id="ota-script-id" placeholder="Enter custom Script ID">
+</div>
+<div class="col-md-6 mb-3" id="ota-link-group" style="display: none;">
+<label class="text-white-50 small mb-1">GitHub Version JSON Link</label>
+<input type="text" class="form-control bg-dark text-white border-secondary" id="ota-github-link" placeholder="https://raw.githubusercontent.com/.../version.json">
+</div>
+<div class="col-md-12 text-md-end mt-2">
+<button class="btn-v btn-v-outline me-2" onclick="testOtaConnection(this)"><i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION</button>
+<button class="btn-v btn-v-green" onclick="saveOtaConfig(this)"><i class="fa-solid fa-save me-2"></i>SAVE CONFIG</button>
+</div>
+</div>
+</div>
+</div>
+<div class="v-card">
+<div class="card-title text-danger"><i class="fa-solid fa-triangle-exclamation"></i> ADVANCED RECOVERY</div>
+<p class="text-white-50 small mb-4">Factory reset wipes all local NVS memory (WiFi, Script ID). Device will reboot in AP mode.</p>
+<button class="btn-v btn-v-red w-100" onclick="factoryReset()">WIPE DEVICE & RESET</button>
+</div>
+</div>
+<!-- Verify Tab -->
+<div id="verify" class="tab-content">
+<div class="v-card">
+<div class="card-title"><i class="fa-solid fa-magnifying-glass"></i> INSTANT RFID PROFILER</div>
+<div class="input-group-v mb-4">
+<input type="text" class="v-input mb-0" id="verify-search-input" placeholder="Enter Tag ID or Scan Card">
+<button class="btn-v btn-v-orange" id="btn-start-verify" onclick="startVerifyFlow()" title="Capture via Hardware">
+<i class="fa-solid fa-crosshairs"></i> CAPTURE
+</button>
+<button class="btn-v btn-v-outline" onclick="performLookup()" title="Manual Search"><i class="fa-solid fa-search"></i></button>
+<button class="btn-v btn-v-outline text-danger" onclick="resetVerifyUI()" title="Clear"><i class="fa-solid fa-trash-can"></i></button>
+</div>
+<div id="verify-loader" style="display:none;" class="text-center p-4">
+<div class="spinner-border text-warning" role="status"></div>
+<div class="mt-2 small text-white-50">SYNCING PROFILE...</div>
+</div>
+<div id="verify-results"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Toast UI -->
+<div id="toast" class="toast-v">
+<i class="fa-solid fa-circle-check me-2"></i> <span id="toast-msg"></span>
+</div>
+<script>
+let pollTimer = null;
+function togglePass(id, el) {
+const inp = document.getElementById(id);
+if (inp.type === 'password') {
+inp.type = 'text';
+el.classList.replace('fa-eye', 'fa-eye-slash');
+} else {
+inp.type = 'password';
+el.classList.replace('fa-eye-slash', 'fa-eye');
+}
+}
+function toggleSerial() {
+const sm = document.getElementById('serial-monitor');
+sm.style.display = sm.style.display === 'none' ? 'block' : 'none';
+}
+function logSerial(msg) {
+const out = document.getElementById('serial-out');
+const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
+const line = document.createElement('div');
+line.style.fontSize = '0.75rem';
+line.innerHTML = `<span style="color:#555;">[${now}]</span> <span style="color:#0f0;">${msg}</span>`;
+out.appendChild(line);
+out.scrollTop = out.scrollHeight;
+}
+function clearSerial() { document.getElementById('serial-out').innerHTML = ''; }
+async function fetchAPI(endpoint, params = {}) {
+try {
+const url = new URL(endpoint, window.location.origin);
+Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+const res = await fetch(url);
+const text = await res.text();
+try {
+return JSON.parse(text);
+} catch(e) {
+if (endpoint !== '/serial_data') {
+console.error("JSON Parse Error at " + endpoint + ":", text);
+}
+return text;
+}
+} catch (err) {
+console.error("Fetch failure:", endpoint, err);
+return null;
+}
+}
+let settingsInitialized = false;
+async function startPolling() {
+if (pollTimer) clearInterval(pollTimer);
+pollTimer = setInterval(async () => {
+const data = await fetchAPI('/status');
+if (data && typeof data === 'object') {
+updateDashboard(data);
+if (!settingsInitialized && data.script_id) {
+document.getElementById('conf-script').value = data.script_id;
+document.getElementById('conf-ssid').value = data.saved_ssid || '';
+document.getElementById('conf-admin-user').value = data.dev_user || 'admin';
+document.getElementById('conf-admin-pass').value = data.dev_pass || 'password123';
+if (data.auto_update !== undefined) {
+document.getElementById('ota-auto-update').checked = data.auto_update;
+}
+if (data.ota_source === 'github') {
+document.getElementById('ota-source-github').checked = true;
+} else {
+document.getElementById('ota-source-gdrive').checked = true;
+}
+document.getElementById('ota-script-id').value = data.ota_id || '';
+document.getElementById('ota-github-link').value = data.ota_link || '';
+if (typeof toggleOtaFields === 'function') toggleOtaFields();
+settingsInitialized = true;
+}
+}
+const logs = await fetchAPI('/serial_data');
+if (logs && typeof logs === 'string' && logs.trim()) {
+logs.split('\n').forEach(line => {
+if (line.trim()) logSerial(line);
+});
+}
+}, 1000); // 1s interval for better real-time sync
+}
+function updateDashboard(d) {
+document.getElementById('stat-mcu').className = `fa-solid fa-microchip stat-icon ${d.mcu ? 'stat-online' : 'stat-offline'}`;
+document.getElementById('stat-net').className = `fa-solid fa-network-wired stat-icon ${d.net ? 'stat-online' : 'stat-offline'}`;
+document.getElementById('stat-db').className = `fa-solid fa-database stat-icon ${d.db ? 'stat-online' : 'stat-offline'}`;
+document.getElementById('stat-wifi').className = `fa-solid fa-wifi stat-icon ${d.wifi ? 'stat-online' : 'stat-offline'}`;
+document.getElementById('disp-dev-name').innerText = d.name || '--';
+document.getElementById('disp-ip').innerText = d.ip || '0.0.0.0';
+document.getElementById('disp-mac').innerText = d.mac || '--';
+document.getElementById('disp-script').innerText = d.script ? 'DEPLOYED' : 'NOT SET';
+document.getElementById('disp-rssi').innerText = (d.rssi || 0) + ' dBm';
+const statusEl = document.getElementById('live-status');
+const nameEl = document.getElementById('live-name');
+const uidEl = document.getElementById('live-uid');
+const msgEl = document.getElementById('live-status-msg');
+if (d.loading) {
+statusEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>VALIDATING';
+uidEl.innerText = d.last_uid;
+nameEl.innerText = 'CONTACTING CLOUD...';
+msgEl.innerText = '';
+} else if (d.last_uid && d.last_uid !== "--------" && d.last_uid !== "0") {
+statusEl.innerText = (d.process_step === 'Ready' || d.process_step === 'None') ? d.mode : d.process_step.toUpperCase();
+uidEl.innerText = d.last_uid;
+nameEl.innerText = (d.last_user && d.last_user !== '---') ? d.last_user : 'SCAN COMPLETED';
+msgEl.innerText = d.detailed_status || d.last_status_msg || "";
+} else {
+statusEl.innerText = d.mode;
+uidEl.innerText = 'WAITING FOR CARD...';
+nameEl.innerText = '---';
+msgEl.innerText = d.last_status_msg || "";
+}
+}
+async function handleLogin() {
+const u = document.getElementById('admin-user').value;
+const p = document.getElementById('admin-pass').value;
+const r = document.getElementById('admin-remember').checked ? 1 : 0;
+const res = await fetchAPI('/login', { u, p, r });
+if (res && res.success) {
+document.getElementById('login-overlay').style.display = 'none';
+document.getElementById('app-ui').style.display = 'block';
+logSerial("GSV_OS: Dashboard Access Authorized.");
+startPolling();
+fetchLogs();
+} else {
+showToast("Access Denied", "danger");
+}
+}
+function switchTab(id, el) {
+document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+el.classList.add('active');
+if (id === 'verify') setMode('VERIFY');
+else if (id === 'inventory') setMode('INV');
+else if (id === 'attendance') setMode('IN');
+logSerial(`UI: Switched to ${id.toUpperCase()}`);
+}
+async function checkFirmwareVersion() {
+logSerial("Checking firmware version...");
+const onlineVerEl = document.getElementById('firmware-online-version');
+if (onlineVerEl) onlineVerEl.innerText = "Checking...";
+try {
+const res = await fetchAPI('/check_version');
+if (res && res.success) {
+onlineVerEl.innerText = res.latest;
+const btn = document.getElementById('btn-trigger-update');
+if (res.updateAvailable) {
+showToast(`New firmware ${res.latest} available!`, "warning");
+logSerial(`Firmware update available! Current: v7.0.1-ELITE, Latest: ${res.latest}`);
+if (btn) btn.disabled = false;
+} else {
+showToast("Firmware is up to date", "green");
+logSerial("Firmware is up to date.");
+if (btn) btn.disabled = true;
+}
+} else {
+onlineVerEl.innerText = "Error checking";
+showToast("Failed to check version", "danger");
+}
+} catch (err) {
+onlineVerEl.innerText = "Error";
+showToast("Error checking version", "danger");
+}
+}
+function toggleOtaFields() {
+const isGithub = document.getElementById('ota-source-github').checked;
+const idGroup = document.getElementById('ota-id-group');
+const linkGroup = document.getElementById('ota-link-group');
+if (isGithub) {
+if (idGroup) idGroup.style.display = 'none';
+if (linkGroup) linkGroup.style.display = 'block';
+} else {
+if (idGroup) idGroup.style.display = 'block';
+if (linkGroup) linkGroup.style.display = 'none';
+}
+}
+async function saveOtaConfig(btn) {
+const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
+const id = document.getElementById('ota-script-id').value.trim();
+const link = document.getElementById('ota-github-link').value.trim();
+if (btn) btn.disabled = true;
+try {
+const res = await fetchAPI('/save_ota', { source, id, link });
+if (res && res.success) {
+showToast("OTA configuration saved successfully!", "green");
+logSerial("OTA update source configuration saved.");
+} else {
+showToast(res.message || "Failed to save OTA configuration", "danger");
+}
+} catch (err) {
+showToast("Error saving OTA configuration", "danger");
+} finally {
+if (btn) btn.disabled = false;
+}
+}
+async function testOtaConnection(btn) {
+const source = document.getElementById('ota-source-github').checked ? 'github' : 'gdrive';
+const id = document.getElementById('ota-script-id').value.trim();
+const link = document.getElementById('ota-github-link').value.trim();
+if (btn) {
+btn.disabled = true;
+btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Testing...';
+}
+logSerial(`Testing OTA connection to source: ${source}...`);
+try {
+const res = await fetchAPI('/test_ota', { source, id, link });
+if (res && res.success) {
+showToast("OTA connection test passed! Server reachable.", "green");
+logSerial(`OTA Connection test success: HTTP ${res.code}.`);
+} else {
+showToast(res.message || "OTA connection test failed", "danger");
+logSerial(`OTA Connection test fail: HTTP ${res.code || 'error'} - ${res.message}.`);
+}
+} catch (err) {
+showToast("Error testing connection", "danger");
+logSerial(`OTA Connection test exception: ${err}`);
+} finally {
+if (btn) {
+btn.disabled = false;
+btn.innerHTML = '<i class="fa-solid fa-network-wired me-2"></i>TEST CONNECTION';
+}
+}
+}
+async function toggleAutoUpdate(el) {
+const enabled = el.checked;
+const res = await fetchAPI('/toggle_auto_update', { enabled: enabled ? "1" : "0" });
+if (res && res.success) {
+showToast(`Auto update ${enabled ? 'enabled' : 'disabled'}`, "green");
+logSerial(`Auto update preference updated: ${enabled}`);
+} else {
+showToast("Failed to save preference", "danger");
+el.checked = !enabled; // revert
+}
+}
+async function triggerOTAUpdate() {
+if (!confirm("Are you sure you want to install the update? The device will restart.")) return;
+const pBar = document.getElementById('ota-progress-bar');
+const pCont = document.getElementById('ota-progress-container');
+const sText = document.getElementById('ota-status-text');
+const btn = document.getElementById('btn-trigger-update');
+if (pCont) pCont.classList.remove('d-none');
+if (pBar) pBar.style.width = "20%";
+if (sText) sText.innerText = "Initiating upgrade...";
+if (btn) btn.disabled = true;
+logSerial("Starting OTA firmware update...");
+try {
+const res = await fetchAPI('/trigger_update');
+if (res && res.success) {
+if (pBar) pBar.style.width = "100%";
+if (sText) sText.innerText = "Updating... Device rebooting.";
+showToast("Firmware updating! Rebooting device...", "green");
+logSerial("OTA Update triggered successfully. Device rebooting...");
+} else {
+if (pCont) pCont.classList.add('d-none');
+if (sText) sText.innerText = "Update failed";
+if (btn) btn.disabled = false;
+showToast(res.message || "Update failed", "danger");
+logSerial("OTA Update failed: " + (res.message || "unknown error"));
+}
+} catch (err) {
+if (pCont) pCont.classList.add('d-none');
+if (btn) btn.disabled = false;
+showToast("Connection lost during update. Check device state.", "danger");
+logSerial("Connection lost. Device may be updating and rebooting.");
+}
+}
+async function setMode(m) {
+const res = await fetchAPI('/mode', { m: m });
+if (res && res.success) {
+showToast(`System Mode: ${m}`, "green");
+logSerial(`UI: Hardware mode manually set to ${m}`);
+const statusEl = document.getElementById('live-status');
+if (statusEl) statusEl.innerText = m;
+} else {
+showToast("Failed to switch mode", "danger");
+}
+}
+let captureActive = false;
+async function startCaptureFlow() {
+if (captureActive) return;
+captureActive = true;
+const el = document.getElementById('capture-uid');
+const msg = document.getElementById('capture-msg');
+const btn = document.getElementById('btn-capture');
+const icon = btn.querySelector('i');
+el.innerText = "SCAN NOW";
+el.style.color = "var(--v-orange)";
+msg.innerText = "Bring an unassigned card near the sensor...";
+icon.className = 'fa-solid fa-spinner fa-spin';
+await fetchAPI('/capture', { reset: '1' });
+logSerial("Capture: Waiting for new card... (Hardware capture reset)");
+let attempts = 0;
+const pollInt = setInterval(async () => {
+const res = await fetchAPI('/capture');
+if (res && res.uid && res.uid !== "--------") {
+el.innerText = res.uid;
+el.style.color = "var(--v-green)";
+msg.innerText = "TAG DETECTED! Use save below.";
+document.getElementById('cloud-save-btn').style.display = "inline-flex";
+icon.className = 'fa-solid fa-crosshairs';
+captureActive = false;
+clearInterval(pollInt);
+}
+attempts++;
+if (attempts > 30) { // 30s timeout
+el.innerText = "TIMEOUT";
+el.style.color = "var(--v-red)";
+msg.innerText = "No card detected. Try again.";
+icon.className = 'fa-solid fa-crosshairs';
+captureActive = false;
+clearInterval(pollInt);
+}
+}, 1000);
+}
+async function pushToCloud() {
+const btn = document.getElementById('cloud-save-btn');
+const icon = btn.querySelector('i');
+const uid = document.getElementById('capture-uid').innerText;
+icon.className = 'fa-solid fa-spinner fa-spin';
+const res = await fetchAPI('/sync', { uid });
+icon.className = 'fa-solid fa-cloud-arrow-up';
+if (res) {
+showToast('Cloud Sync Success', 'green');
+document.getElementById('cloud-save-btn').style.display = "none";
+fetchInventory();
+} else {
+showToast('Cloud Sync Failed', 'danger');
+}
+}
+async function saveNetwork() {
+const btn = document.getElementById('btn-save-net');
+const icon = btn.querySelector('i');
+const ssid = document.getElementById('conf-ssid').value;
+const pass = document.getElementById('conf-pass').value;
+icon.className = 'fa-solid fa-spinner fa-spin';
+const res = await fetchAPI('/save_net', { ssid, pass });
+icon.className = 'fa-solid fa-save';
+if (res) {
+showToast('WiFi Settings Saved. Applying...', 'green');
+logSerial("GSV_OS: WiFi Credentials committed to NVS.");
+} else {
+showToast('Hardware Connection Error', 'danger');
+}
+}
+async function scanWiFi(btn) {
+const icon = btn.querySelector('i');
+const orig = icon.className;
+const resDiv = document.getElementById('wifi-scan-results');
+icon.className = 'fa-solid fa-spinner fa-spin';
+resDiv.innerHTML = '<div class="p-2 small text-white-50">Searching...</div>';
+resDiv.style.display = 'block';
+const res = await fetchAPI('/scan_wifi');
+icon.className = orig;
+if (res && res.length > 0) {
+resDiv.innerHTML = res.map(w => `
+<div class="p-2 border-bottom border-dark small d-flex justify-content-between" style="cursor:pointer;" onclick="selectSSID('${w.ssid}')">
+<span>${w.ssid}</span>
+<span class="text-white-50">${w.rssi} dBm</span>
+</div>
+`).join('');
+showToast(`Found ${res.length} networks`, 'green');
+} else {
+resDiv.innerHTML = '<div class="p-2 small text-danger">No networks found</div>';
+showToast("Scan failed or no networks", "danger");
+}
+}
+function selectSSID(s) {
+document.getElementById('conf-ssid').value = s;
+document.getElementById('wifi-scan-results').style.display = 'none';
+}
+async function saveSystem() {
+const btn = document.getElementById('btn-save-sys');
+const icon = btn.querySelector('i');
+const script = document.getElementById('conf-script').value;
+const user = document.getElementById('conf-admin-user').value;
+const pass = document.getElementById('conf-admin-pass').value;
+icon.className = 'fa-solid fa-spinner fa-spin';
+const res = await fetchAPI('/save_sys', { script, adminUser: user, adminPass: pass });
+icon.className = 'fa-solid fa-save';
+if (res) {
+showToast('System Rebooting in 3s...', 'green');
+logSerial("GSV_OS: System parameters updated. Restarting...");
+setTimeout(() => {
+window.location.href = "http://vvarma-rfid.local/dashboard";
+}, 4000);
+} else {
+showToast('Hardware Connection Error', 'danger');
+}
+}
+async function factoryReset() {
+if(confirm("DANGER: This will wipe all system data. Continue?")) {
+await fetchAPI('/factory_reset');
+window.location.reload();
+}
+}
+async function resetCapture() {
+await fetchAPI('/capture', { reset: '1' });
+document.getElementById('capture-uid').innerText = "--------";
+document.getElementById('capture-msg').innerText = "Card capture cleared";
+document.getElementById('cloud-save-btn').style.display = "none";
+showToast("Capture Ready", "orange");
+}
+async function fetchLogs(btn) {
+let icon, orig;
+if (btn) {
+icon = btn.querySelector('i');
+orig = icon.className;
+icon.className = 'fa-solid fa-spinner fa-spin';
+}
+const data = await fetchAPI('/logs');
+if (btn) icon.className = orig;
+const list = document.getElementById('log-list');
+if (!data || data.length === 0) {
+list.innerHTML = `<p class="text-center text-white-50 p-4">No Students Available (Today/Yesterday)</p>`;
+return;
+}
+list.innerHTML = data.map(l => {
+const statusColor = (l.status || '').toUpperCase() === 'LATE' ? 'var(--v-orange)' : 'var(--v-green)';
+return `
+<div class="hist-item p-3 mb-2" style="background: rgba(255,255,255,0.03); border-radius: 8px; border-left: 4px solid ${statusColor};">
+<div class="d-flex justify-content-between align-items-start mb-2">
+<div>
+<div class="fw-bold text-white fs-5">${l.name}</div>
+<div class="small text-white-50">${l.regId} | ${l.date}</div>
+</div>
+<div class="badge" style="background: ${statusColor}22; color: ${statusColor}; border: 1px solid ${statusColor}44;">
+${(l.status || 'PRESENT').toUpperCase()}
+</div>
+</div>
+<div class="row g-2 small">
+<div class="col-6">
+<i class="fa-solid fa-users-gear me-1 text-white-50"></i> BATCH: <span class="text-white">${l.batch}</span>
+</div>
+<div class="col-6">
+<i class="fa-solid fa-clock me-1 text-white-50"></i> SLOT: <span class="text-white">${l.slot}</span>
+</div>
+<div class="col-6">
+<i class="fa-solid fa-business-time me-1 text-white-50"></i> PERIOD: <span class="text-white">${l.period}</span>
+</div>
+<div class="col-6">
+<i class="fa-solid fa-hourglass-start me-1 text-white-50"></i> IN: <span class="text-green fw-bold">${l.inTime}</span>
+</div>
+<div class="col-6 offset-6">
+<i class="fa-solid fa-hourglass-end me-1 text-white-50"></i> OUT: <span class="text-orange fw-bold">${l.outTime}</span>
+</div>
+</div>
+</div>
+`;
+}).join('');
+}
+async function fetchInventory(btn) {
+let icon, orig;
+if (btn) {
+icon = btn.querySelector('i');
+orig = icon.className;
+icon.className = 'fa-solid fa-spinner fa-spin';
+}
+const data = await fetchAPI('/inventory');
+if (btn) icon.className = orig;
+const list = document.getElementById('inv-history');
+if (!data || data.length === 0) { list.innerHTML = `<p class="text-center text-white-50">Empty</p>`; return; }
+list.innerHTML = data.map(i => {
+let statusColor = i.status === 'Available' ? 'var(--v-green)' : 'var(--v-orange)';
+let details = (i.status === 'Available' || (!i.name && !i.studentName))
+? `<div class="small text-white-50">AVAILABLE SINCE: ${i.date || '---'}</div>`
+: `
+<div class="small text-white-80">NAME: ${i.name || i.studentName || '---'}</div>
+<div class="small text-white-50">REG_NO: ${i.reg_no || i.regNo || '---'} | ID: ${i.reg_id || i.regId || '---'}</div>
+<div class="small text-white-50">COLL: ${i.college || '---'} | DEPT: ${i.dept || i.department || '---'}</div>
+<div class="small text-white-50">BATCH: ${i.batch || '---'}</div>
+`;
+return `
+<div class="hist-item d-block text-start p-3" style="border-bottom: 1px solid #333; transition: 0.3s; cursor: pointer;" onmouseover="this.style.background='#222'" onmouseout="this.style.background='transparent'">
+<div class="d-flex justify-content-between">
+<div class="text-warning fw-bold">${i.uid}</div>
+<div style="color:${statusColor}; font-weight:800; font-size:0.7rem;">${(i.status || 'AVAILABLE').toUpperCase()}</div>
+</div>
+${details}
+</div>
+`;
+}).join('');
+}
+let verifyActive = false;
+async function startVerifyFlow() {
+if (verifyActive) return;
+verifyActive = true;
+const input = document.getElementById('verify-search-input');
+const btn = document.getElementById('btn-start-verify');
+const icon = btn.querySelector('i');
+input.value = "READING CARD...";
+icon.className = 'fa-solid fa-spinner fa-spin';
+await fetchAPI('/mode', { m: 'VERIFY' });
+await fetchAPI('/capture', { reset: '1' });
+let attempts = 0;
+const poll = setInterval(async () => {
+const res = await fetchAPI('/capture');
+if (res && res.uid && res.uid !== "--------") {
+input.value = res.uid;
+clearInterval(poll);
+verifyActive = false;
+icon.className = 'fa-solid fa-crosshairs';
+performLookup();
+}
+attempts++;
+if (attempts > 20) {
+clearInterval(poll);
+verifyActive = false;
+icon.className = 'fa-solid fa-crosshairs';
+input.value = "";
+showToast("Verify Timeout", "danger");
+}
+}, 1000);
+}
+async function performLookup() {
+const uid = document.getElementById('verify-search-input').value;
+if (!uid || uid.length < 4) return;
+const loader = document.getElementById('verify-loader');
+const results = document.getElementById('verify-results');
+loader.style.display = 'block';
+results.innerHTML = '';
+const res = await fetchAPI('/validate', { action: 'check', uid: uid });
+loader.style.display = 'none';
+if (res && res.status === 'success') {
+renderVerifyResults(res, uid);
+} else {
+let isNewCard = false;
+if (res && res.message && (res.message.toLowerCase().includes('not in') || res.message.toLowerCase().includes('unknown'))) {
+isNewCard = true;
+}
+if (isNewCard) {
+results.innerHTML = `
+<div class="alert border-0 bg-dark text-white text-center py-4" style="border-radius:15px; border:2px dashed var(--v-orange)!important;">
+<i class="fa-solid fa-id-card fs-1 mb-3" style="color:var(--v-orange);"></i>
+<h4 class="fw-bold text-orange" style="color:var(--v-orange);">NEW CARD SCANNED</h4>
+<p class="mb-3 text-white-50">This RFID card [${uid}] is a new card and not in inventory.</p>
+<button class="btn-v btn-v-orange px-4" onclick="switchTab('inventory', this); setTimeout(()=>startCaptureFlow(), 500);">
+<i class="fa-solid fa-plus me-2"></i>ADD TO INVENTORY
+</button>
+</div>
+`;
+} else {
+results.innerHTML = `
+<div class="alert alert-danger border-0 bg-danger bg-opacity-10 text-danger text-center py-4">
+<i class="fa-solid fa-circle-exclamation fs-1 mb-2"></i>
+<h4 class="fw-bold">TAG NOT FOUND</h4>
+<p class="mb-0">${(res && res.message) ? res.message : `This RFID card [${uid}] validation failed.`}</p>
+</div>
+`;
+}
+}
+}
+function renderVerifyResults(d, uid) {
+const results = document.getElementById('verify-results');
+const s = d.student || d;
+const inv = d.inventory || {};
+if (!s || (!s.name && !s.studentName) || s.name === "UNAUTHORIZED" || s.name === "Unknown" || s.name === "---") {
+results.innerHTML = `
+<div class="alert alert-warning border-0 bg-warning bg-opacity-10 text-warning text-center py-4">
+<i class="fa-solid fa-box-open fs-1 mb-3"></i>
+<h4 class="fw-bold">AVAILABLE IN INVENTORY</h4>
+<p class="mb-3">This tag is available in inventory but not assigned to any student. You can assign it.</p>
+<div class="small text-white-50 mb-3">Inventory Added By: ${inv.AddedBy || 'Admin'} | Date: ${inv.AddedDate || '---'}</div>
+<button class="btn-v btn-v-green px-4" onclick="switchTab('settings', this);">
+<i class="fa-solid fa-user-plus me-2"></i>ASSIGN STUDENT IN SETTINGS
+</button>
+</div>
+`;
+return;
+}
+results.innerHTML = `
+<div class="v-card border-success" style="border-left-color: var(--v-green);">
+<div class="row align-items-center mb-4">
+<div class="col-auto">
+<div class="bg-success bg-opacity-10 p-3 rounded-circle" style="width:70px; height:70px; display:flex; align-items:center; justify-content:center;">
+<i class="fa-solid fa-user-check text-success fs-1"></i>
+</div>
+</div>
+<div class="col">
+<h3 class="fw-bold text-white mb-0 text-uppercase">${s.name || s.studentName || '---'}</h3>
+<div class="text-success small fw-bold"><i class="fa-solid fa-shield-halved me-1"></i> VERIFIED POSITIVE</div>
+</div>
+</div>
+<div class="row g-3">
+<div class="col-md-6 border-end border-dark">
+<div class="mb-3">
+<label class="text-white-50 x-small text-uppercase">Registration ID</label>
+<div class="text-white fw-bold">${s.regId || s.reg_id || '---'}</div>
+</div>
+<div class="mb-3">
+<label class="text-white-50 x-small text-uppercase">Register Number</label>
+<div class="text-white fw-bold">${s.regNo || s.reg_no || '---'}</div>
+</div>
+<div class="mb-3">
+<label class="text-white-50 x-small text-uppercase">College / University</label>
+<div class="text-white small">${s.college || '---'}</div>
+</div>
+</div>
+<div class="col-md-6">
+<div class="mb-3">
+<label class="text-white-50 x-small text-uppercase">Batch Allocation</label>
+<div class="text-orange fw-bold">${s.batch || '---'}</div>
+</div>
+<div class="mb-3">
+<label class="text-white-50 x-small text-uppercase">Department</label>
+<div class="text-white fw-bold">${s.dept || s.department || '---'}</div>
+</div>
+<div class="row">
+<div class="col-6">
+<label class="text-white-50 x-small text-uppercase">Start Date</label>
+<div class="text-white small">${s.startDate || '---'}</div>
+</div>
+<div class="col-6">
+<label class="text-white-50 x-small text-uppercase">End Date</label>
+<div class="text-white small">${s.endDate || '---'}</div>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-4 pt-3 border-top border-dark d-flex justify-content-between align-items-center">
+<div>
+<span class="text-white-50 small">Tag Status:</span>
+<span class="badge bg-success ms-1">${s.status || 'ACTIVE'}</span>
+</div>
+<div class="text-white-50 x-small">
+MSG: <span class="text-white font-monospace">${s.message || '---'}</span>
+</div>
+</div>
+</div>
+`;
+}
+function resetVerifyUI() {
+document.getElementById('verify-search-input').value = "";
+document.getElementById('verify-results').innerHTML = "";
+fetchAPI('/capture', { reset: '1' });
+}
+async function resetUI(btn) {
+if(btn) {
+const icon = btn.querySelector('i');
+const orig = icon.className;
+icon.className = 'fa-solid fa-spinner fa-spin';
+await fetchAPI('/reset_display');
+icon.className = orig;
+} else {
+await fetchAPI('/reset_display');
+}
+document.getElementById('live-status').innerText = "WAITING";
+document.getElementById('live-uid').innerText = "READY FOR SCAN";
+document.getElementById('live-name').innerText = "---";
+document.getElementById('live-status-msg').innerText = "";
+showToast("Display Reset", "green");
+}
+function showToast(msg, type = 'orange') {
+const t = document.getElementById('toast');
+document.getElementById('toast-msg').innerText = msg;
+t.style.borderLeftColor = type === 'danger' ? 'var(--v-red)' : (type === 'green' ? 'var(--v-green)' : 'var(--v-orange)');
+t.style.display = 'block';
+setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+if (document.getElementById('app-ui').style.display === 'block') {
+startPolling();
+}
+</script>
 </body>
-</html>
-)rawliteral");
+</html>)rawliteral");
   server.sendContent(""); // End of chunked response
 }
 
