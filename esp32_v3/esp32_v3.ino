@@ -44,7 +44,7 @@
 #endif
 
 // ==================== CONFIGURATION ====================
-#define FIRMWARE_VERSION "v7.0.4-ELITE"
+#define FIRMWARE_VERSION "v7.0.5-ELITE"
 #define DEVICE_NAME "vvarma-rfid"
 #define AP_SSID "VARMA RFID SYSTEM"
 #define AP_PASS "GSVRF001"
@@ -333,6 +333,30 @@ void handleValidate();
 void handleResetDisplay();
 void handleGetScriptId();
 void fetchSwitchStatus(); // ⭐️ ADDED
+void checkBootFactoryReset();
+void bootDelay(unsigned long ms);
+
+unsigned long bootStatsPressStart = 0;
+void checkBootFactoryReset() {
+  if (digitalRead(BTN_STATS) == LOW) {
+    if (bootStatsPressStart == 0) {
+      bootStatsPressStart = millis();
+    } else if (millis() - bootStatsPressStart >= 5000) {
+      factoryReset();
+    }
+  } else {
+    bootStatsPressStart = 0;
+  }
+}
+
+void bootDelay(unsigned long ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    checkBootFactoryReset();
+    delay(20);
+    feedWatchdog();
+  }
+}
 
 // ==================== SETUP ====================
 void setup() {
@@ -409,6 +433,7 @@ void setup() {
     lcdUnlock();
     scrollRow2("Attndnce Sys V3 ");
     feedWatchdog(); // 🔥 FIX: Feed Watchdog during blocking loops
+    checkBootFactoryReset();
     delay(20);
   }
 
@@ -419,7 +444,7 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print("Please wait...  ");
   feedWatchdog();
-  delay(3000);
+  bootDelay(3000);
   feedWatchdog();
 
   // AP MODE CHECK (Only if credentials are wiped)
@@ -431,21 +456,22 @@ void setup() {
     int retryCount = 0;
     bool connected = false;
     while (retryCount < 3) {
-      handleButtons();
+      checkBootFactoryReset();
       lcd.clear();
       lcd.setCursor(0, 0);
       lcd.print("Connecting WiFi:");
       lcd.setCursor(0, 1);
       lcd.print(savedSSID.substring(0, 16));
 
-      WiFi.mode(WIFI_STA); // Use STA mode so AP isn't broadcast unnecessarily
+      WiFi.mode(WIFI_AP_STA); // AP_STA mode so local dashboard hotspot remains live
+      WiFi.softAP(AP_SSID, AP_PASS);
       WiFi.setHostname(DEVICE_NAME);
       WiFi.begin(savedSSID.c_str(), savedPass.c_str());
       int counter = 0;
       while (WiFi.status() != WL_CONNECTED &&
              counter < 40) { // 20 seconds per cycle
-        handleButtons();
-        delay(500);
+        checkBootFactoryReset();
+        bootDelay(500);
         lcdLock();
         lcd.setCursor(15, 0);
         lcd.print(counter % 2 == 0 ? "." : " ");
@@ -464,7 +490,7 @@ void setup() {
       lcd.setCursor(0, 1);
       lcd.print("Retry #" + String(retryCount) + "...    ");
       feedWatchdog();
-      delay(3000);
+      bootDelay(3000);
     }
 
     if (connected) {
@@ -476,7 +502,7 @@ void setup() {
       lcd.print("WiFi Connected!");
       lcd.setCursor(0, 1);
       lcd.print("Signal: GOOD   ");
-      delay(3000);
+      bootDelay(3000);
 
       // 1. IP Address Display (Static, 3 seconds)
       lcd.clear();
@@ -488,7 +514,7 @@ void setup() {
         while (ipShow.length() < 16) ipShow += " ";
         lcd.print(ipShow.substring(0, 16));
       }
-      delay(3000);
+      bootDelay(3000);
 
       // 2. MAC Address Display (Scrolling, 3 seconds)
       lcd.clear();
@@ -502,7 +528,7 @@ void setup() {
           lcd.setCursor(0, 1);
           String view = macShow.substring(macOffset) + macShow.substring(0, macOffset);
           lcd.print(view.substring(0, 16));
-          delay(300);
+          bootDelay(300);
           macOffset = (macOffset + 1) % macShow.length();
           feedWatchdog();
         }
@@ -510,7 +536,7 @@ void setup() {
 
       // ⭐️ STABILIZED FLOW: Finalize Network identity
       WiFi.setHostname(DEVICE_NAME);
-      delay(200);
+      bootDelay(200);
 
       setupWebServer();
       mDNS_begin();
@@ -525,7 +551,7 @@ void setup() {
         lcd.print("Connecting DB...");
         lcd.setCursor(0, 1);
         lcd.print("Please wait...  ");
-        delay(3000);
+        bootDelay(3000);
 
         lcd.clear();
         lcd.setCursor(0, 0);
@@ -541,7 +567,8 @@ void setup() {
           lcd.print("Retrying in 3s  ");
           for (int i = 0; i < 30; i++) {
             server.handleClient();
-            delay(100);
+            checkBootFactoryReset();
+            bootDelay(100);
             feedWatchdog();
           }
           lcd.clear();
@@ -553,7 +580,7 @@ void setup() {
 
         initialSyncDone = true; // ✅ ONLY ONCE
         fetchSwitchStatus();
-        delay(1000);
+        bootDelay(1000);
       } else {
         webLog("Hardware: Script ID missing. Skipping Cloud Sync.");
         currentSyncStatus = SYNC_DATABASE_CONFIG_ERROR;
@@ -564,7 +591,7 @@ void setup() {
       while (rfidSerial.available()) {
         rfidSerial.read();
       }
-      delay(100);
+      bootDelay(100);
       while (rfidSerial.available()) {
         rfidSerial.read();
       }
@@ -574,7 +601,7 @@ void setup() {
 
       // ⭐️ STARTUP BEEP: System ready and home screen starting
       beep(1200, 200);
-      delay(100);
+      bootDelay(100);
       beep(1800, 300);
 
       initiateOtaCheckOnBoot();
@@ -2389,7 +2416,8 @@ void connectWiFi() {
     return;
   }
 
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, AP_PASS);
   WiFi.setHostname(DEVICE_NAME);
   WiFi.begin(savedSSID.c_str(), savedPass.c_str());
   Serial.println("Attempting connection to: " + savedSSID);
