@@ -245,6 +245,8 @@ const ADMIN_EMAIL_ID = 'gsveeip2026@gmail.com';
 const COMPANY_NAME = "GSV Electrical Enterprises";
 const COMPANY_CONTACT = "9092610415";
 const COMPANY_WEBSITE = "gsvee.in";
+const COMPANY_EMAIL = "gsveeip2026@gmail.com";
+const COMPANY_ADDRESS = "Tamil Nadu, India";
 const COMPANY_CHIEF_ENGINEER = "S Vijay Varman";
 const COMPANY_CHIEF_TITLE = "Chief Electrical Engineer";
 const CHIEF_ENGINEER_DETAILS = `${COMPANY_CHIEF_ENGINEER}.DEEE,BE,MBA<br>${COMPANY_CHIEF_TITLE}`;
@@ -1826,6 +1828,10 @@ function getSheetDataAsObjects(sheet) {
         }
 
         obj[header] = value;
+        // Sanitize Google Sheets formula error strings
+        if (typeof obj[header] === 'string' && /^#(N\/A|REF!|VALUE!|DIV\/0!|NAME\?|NUM!|NULL!)/.test(String(obj[header]).trim())) {
+          obj[header] = '';
+        }
       }
     });
     results.push(obj);
@@ -5750,22 +5756,23 @@ function studentLogin(regId, mobile) {
       }
     }
 
-    if (endDate) {
-      const limitDate = new Date(endDate);
-      limitDate.setDate(limitDate.getDate() + 31); // 30 days hard limit
-      if (today >= limitDate) {
-        return {
-          status: "error",
-          message: "Your student portal access has expired (30-day limit ended)."
-        };
-      }
-    }
+    // Let all students log in successfully; access restrictions will be enforced on the dashboard.
 
     logActivity('Student Login', inputRegId, 'Successful login.');
 
     const gpAreas = getApprovedGracePeriodAreas(student.RegistrationID);
     const hasAttendanceGP = gpAreas.includes('attendance');
     const hasDiaryGP = gpAreas.includes('diary');
+
+    let inDefaultGracePeriod = false;
+    if (endDate) {
+      const gracePeriodEndDate = new Date(endDate);
+      gracePeriodEndDate.setHours(0, 0, 0, 0);
+      gracePeriodEndDate.setDate(gracePeriodEndDate.getDate() + 15);
+      if (today > new Date(endDate) && today <= gracePeriodEndDate) {
+        inDefaultGracePeriod = true;
+      }
+    }
 
     return {
       status: "success",
@@ -5790,10 +5797,10 @@ function studentLogin(regId, mobile) {
           other: !!student.OtherUrl
         },
         permissions: {
-          attendance: (student.AttendanceAccess !== false && student.AttendanceAccess !== 'FALSE' && String(student.AttendanceAccess).trim().toUpperCase() !== 'FALSE') || hasAttendanceGP,
-          diary: (student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE') || hasDiaryGP,
-          tasks: gpAreas.includes('tasks'),
-          projects: gpAreas.includes('projects')
+          attendance: inDefaultGracePeriod || (student.AttendanceAccess !== false && student.AttendanceAccess !== 'FALSE' && String(student.AttendanceAccess).trim().toUpperCase() !== 'FALSE') || hasAttendanceGP,
+          diary: inDefaultGracePeriod || (student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE') || hasDiaryGP,
+          tasks: inDefaultGracePeriod || gpAreas.includes('tasks'),
+          projects: inDefaultGracePeriod || gpAreas.includes('projects')
         }
       }
     };
@@ -9635,6 +9642,7 @@ function getStudentAttendance(registrationId) {
       presentCounter: 0,
       absentCounter: 0,
       lateCounter: 0,
+      earlyCounter: 0,
       wfhCounter: 0,
       odCounter: 0,
       medicalCounter: 0,
@@ -14031,6 +14039,7 @@ function getAllStudents() {
         profilePhotoUrl: s.ProfilePhotoUrl || '',
         rfidTag: s.RFID_TagID || '',
         projectName: projectNames[regIdUpper] || '',
+        interestedArea: s.InterestedArea || '',
         hasDocuments: studentsWithFiles.has(regIdUpper),
         allMandatoryDone: !!((s.BonafideUrl || '').trim() && (s.DeclarationUrl || '').trim() && (s.CollegeIdUrl || '').trim()),
         projectDocCount: projectDocCounts[regIdUpper] || 0,
@@ -15271,6 +15280,43 @@ function getStudentDetails_LEGACY_2(regId) {
 // DUPLICATE REMOVED: getStudentCertificate is defined at ~line 6688 with full document lookup.
 // Do NOT redefine here.
 
+/**
+ * Deep-cleans an object so it is safe to serialize and return to the client via google.script.run.
+ * Converts: Date objects → ISO strings, NaN → null, undefined → null, Infinity → null,
+ * Google Sheets formula errors (#N/A, #REF!, #VALUE!, etc.) → null.
+ */
+function sanitizeForJson(val, depth) {
+  if (depth === undefined) depth = 0;
+  if (depth > 10) return null; // Prevent runaway recursion
+  if (val === null || val === undefined) return null;
+  if (val instanceof Date) {
+    return isNaN(val.getTime()) ? null : val.toISOString();
+  }
+  if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val)) return null;
+    return val;
+  }
+  if (typeof val === 'string') {
+    // Convert Google Sheets formula errors to null
+    if (/^#(N\/A|REF!|VALUE!|DIV\/0!|NAME\?|NUM!|NULL!)/.test(val.trim())) return null;
+    return val;
+  }
+  if (typeof val === 'boolean') return val;
+  if (Array.isArray(val)) {
+    return val.map(function(item) { return sanitizeForJson(item, depth + 1); });
+  }
+  if (typeof val === 'object') {
+    var clean = {};
+    for (var key in val) {
+      if (Object.prototype.hasOwnProperty.call(val, key)) {
+        clean[key] = sanitizeForJson(val[key], depth + 1);
+      }
+    }
+    return clean;
+  }
+  return val;
+}
+
 function getStudentComprehensiveProfile(regId) {
   try {
     // 1. Details
@@ -15289,6 +15335,58 @@ function getStudentComprehensiveProfile(regId) {
       });
       return actualKey ? obj[actualKey] : null;
     };
+
+    // Helper to parse dates safely and avoid NaN issues
+    const parseSafeDate = (val) => {
+      if (!val || val === 'N/A' || String(val).trim() === '') return null;
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    // Calculate grace period variables
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rawEndDate = d["InternshipEndDate"] || d["EndDate"];
+    const endDate = parseSafeDate(rawEndDate);
+    
+    let graceExpired = false;
+    let inDefaultGracePeriod = false;
+    let hasPendingExtension = false;
+
+    if (endDate) {
+      const gracePeriodEndDate = new Date(endDate);
+      gracePeriodEndDate.setHours(0, 0, 0, 0);
+      gracePeriodEndDate.setDate(gracePeriodEndDate.getDate() + 15); // 15 days default grace period
+      
+      const parsedEnd = new Date(endDate);
+      parsedEnd.setHours(0, 0, 0, 0);
+      
+      if (today > gracePeriodEndDate) {
+        const gpAreas = getApprovedGracePeriodAreas(regId);
+        if (gpAreas.length === 0) {
+          graceExpired = true;
+        }
+      } else if (today > parsedEnd && today <= gracePeriodEndDate) {
+        inDefaultGracePeriod = true;
+      }
+    }
+    
+    if (graceExpired) {
+      const otpSheet = getSheet(SHEET_NAMES.ATTENDANCE_OTP);
+      if (otpSheet) {
+        const otpData = getSheetDataAsObjects(otpSheet);
+        const pendingReq = otpData.find(r => 
+          String(r.RegistrationID || "").trim().toLowerCase() === String(regId).toLowerCase() &&
+          String(r.Status || "").trim() === 'Pending' &&
+          String(r.ActionType || "").trim() === 'GracePeriod'
+        );
+        if (pendingReq) {
+          hasPendingExtension = true;
+        }
+      }
+    }
+
+    const isPermitted = !graceExpired;
 
     // Map to frontend-friendly keys
     const details = {
@@ -15326,6 +15424,9 @@ function getStudentComprehensiveProfile(regId) {
       collegeDistrict: d["CollegeDistrict"],
       collegeCode: d["CollegeCode"],
       interestedArea: d["InterestedArea"],
+      graceExpired: graceExpired,
+      hasPendingExtension: hasPendingExtension,
+      inDefaultGracePeriod: inDefaultGracePeriod,
       documents: {
         bonafide: !!findValue(d, "Bonafide"),
         declaration: !!findValue(d, "Declaration"),
@@ -15333,19 +15434,16 @@ function getStudentComprehensiveProfile(regId) {
         other: !!findValue(d, "Other")
       },
       permissions: {
-        attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('attendance'),
-        diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('diary'),
-        tasks: getApprovedGracePeriodAreas(regId).includes('tasks'),
-        projects: getApprovedGracePeriodAreas(regId).includes('projects')
+        attendance: isPermitted && (inDefaultGracePeriod || (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('attendance')),
+        diary: isPermitted && (inDefaultGracePeriod || (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('diary')),
+        tasks: isPermitted && (inDefaultGracePeriod || getApprovedGracePeriodAreas(regId).includes('tasks')),
+        projects: isPermitted && (inDefaultGracePeriod || getApprovedGracePeriodAreas(regId).includes('projects'))
       },
       rfidTag: d["RFID_TagID"] || '',
       certificateIssued: !!(d["CertificateLink"] || d["CertificateIssuedDate"])
     };
 
     // Internship Status Logic Update
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const endDate = details.endDate ? new Date(details.endDate) : null;
     if (endDate && today > endDate) {
       if (details.certificateIssued) details.status = "internship completed";
       else details.status = "internship period ended";
@@ -15356,19 +15454,21 @@ function getStudentComprehensiveProfile(regId) {
     if (endDate && (endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24) <= 7) {
       // Find pending items
       const pendingItems = [];
-      // Attendance check performed later after attResp is fetched
-      // Diary check performed later
     }
 
     // Calculate Duration Days if missing or ensure precise inclusive count
     if (details.InternshipStartDate && details.InternshipEndDate) {
-      const start = new Date(details.InternshipStartDate);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(details.InternshipEndDate);
-      end.setHours(0, 0, 0, 0);
-      const diffTime = end - start;
-      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive count
-      details.durationDays = diffDays > 0 ? diffDays : 0;
+      const start = parseSafeDate(details.InternshipStartDate);
+      const end = parseSafeDate(details.InternshipEndDate);
+      if (start && end) {
+        start.setHours(0, 0, 0, 0);
+        end.setHours(0, 0, 0, 0);
+        const diffTime = end - start;
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1; // Inclusive count
+        details.durationDays = diffDays > 0 ? diffDays : 0;
+      } else {
+        details.durationDays = 0;
+      }
     }
 
     // 2. Tasks - Robustly ensure it's an array
@@ -15447,9 +15547,11 @@ function getStudentComprehensiveProfile(regId) {
     // 10. Consolidated Summary for Student & Admin
     const diaryEntryCount = diary && diary.diary ? Object.keys(diary.diary).length : 0;
     let expectedDiaryDays = 0;
-    if (details.InternshipStartDate && details.InternshipEndDate) {
-      const sD = new Date(details.InternshipStartDate); sD.setHours(0, 0, 0, 0);
-      const eD = new Date(details.InternshipEndDate); eD.setHours(0, 0, 0, 0);
+    const sD = parseSafeDate(details.InternshipStartDate);
+    const eD = parseSafeDate(details.InternshipEndDate);
+    if (sD && eD) {
+      sD.setHours(0, 0, 0, 0);
+      eD.setHours(0, 0, 0, 0);
       const tD = new Date(); tD.setHours(0, 0, 0, 0);
       const effectiveEnd = eD < tD ? eD : tD;
       let cur = new Date(sD);
@@ -15495,7 +15597,11 @@ function getStudentComprehensiveProfile(regId) {
         startDate: details.InternshipStartDate,
         endDate: details.InternshipEndDate,
         durationDays: details.durationDays || 0,
-        daysRemaining: details.endDate ? Math.max(0, Math.ceil((new Date(details.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))) : 0,
+        daysRemaining: (() => {
+          const end = parseSafeDate(details.endDate || details.InternshipEndDate);
+          if (!end) return 0;
+          return Math.max(0, Math.ceil((end.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)));
+        })(),
         isActive: details.status === 'approved' || details.status === 'active' || details.status === 'assigned',
         overallHealthScore: 0 // Calculated below
       }
@@ -15526,11 +15632,12 @@ function getStudentComprehensiveProfile(regId) {
     };
 
     Logger.log(`COMPREHENSIVE_LOAD: Student: ${regId} | Tasks: ${tasks.length} | Projects: ${projects.length}`);
-    return finalResponse;
+    return sanitizeForJson(finalResponse);
 
   } catch (e) {
-    Logger.log("Error in getStudentComprehensiveProfile: " + e.toString() + " at line " + e.lineNumber);
-    return { status: 'error', message: e.message };
+    const errorDetails = "Error: " + e.toString() + " | Stack: " + (e.stack || "No stack") + " | Line: " + (e.lineNumber || "No line");
+    Logger.log("Error in getStudentComprehensiveProfile: " + errorDetails);
+    return { status: 'error', message: errorDetails };
   }
 }
 
@@ -15795,10 +15902,18 @@ function saveDiaryEntry(regId, dateStr, content) {
     const student = getSheetDataAsObjects(regSheet).find(s => s.RegistrationID === regId);
     if (!student) return { status: 'error', message: 'Student not found.' };
 
-    // Restriction: Completed students
+    // Restriction: Completed students or ended internship period
     const studentStatusStr = String(student.ApplicationStatus || student.Status || '').toLowerCase();
-    if (studentStatusStr === 'completed') {
-      return { status: 'error', message: 'Internship completed. Diary is now in View-Only mode.' };
+    const edRaw = student.InternshipEndDate || student.EndDate;
+    const ed = edRaw ? new Date(edRaw) : null;
+    const todayForEndCheck = new Date();
+    todayForEndCheck.setHours(0,0,0,0);
+    
+    if (studentStatusStr === 'completed' || (ed && todayForEndCheck > new Date(ed).setHours(0,0,0,0))) {
+      const gpAreas = getApprovedGracePeriodAreas(regId);
+      if (!gpAreas.includes('diary')) {
+        return { status: 'error', message: 'Internship period has ended. Diary is now in View-Only mode. Please submit a Diary Correction Request.' };
+      }
     }
 
     if (studentStatusStr !== 'approved' && studentStatusStr !== 'active' && studentStatusStr !== 'assigned') {
@@ -17465,6 +17580,102 @@ function requestGracePeriod(regId, reason, start, end, areas) {
     });
 
     return { status: 'success', message: 'Grace period extension request submitted to Admin.' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+/**
+ * Submits a portal access extension request from the login screen.
+ */
+function submitPortalExtensionRequest(regId, mobile, durationDays, reason) {
+  try {
+    const sheet = getSheet(SHEET_NAMES.REGISTRATIONS);
+    if (!sheet) return { status: 'error', message: 'Registrations sheet not found.' };
+
+    const inputRegId = regId ? regId.toString().trim().toUpperCase() : "";
+    const inputMobile = mobile ? mobile.toString().trim() : "";
+
+    const data = getSheetDataAsObjects(sheet);
+    let student = data.find(s => {
+      const sRegId = s.RegistrationID ? s.RegistrationID.toString().trim().toUpperCase() : "";
+      const sMobile = s.MobileNumber ? s.MobileNumber.toString().trim() : "";
+      return (sRegId === inputRegId && sMobile === inputMobile);
+    });
+
+    if (!student) {
+      // Check Consolidated sheet
+      const consolidatedSheet = getSheet(SHEET_NAMES.CONSOLIDATED_INTERNSHIPS);
+      if (consolidatedSheet) {
+        const consolidatedData = getSheetDataAsObjects(consolidatedSheet);
+        student = consolidatedData.find(s => {
+          const sRegId = s.RegistrationID ? s.RegistrationID.toString().trim().toUpperCase() : "";
+          const sMobile = s.MobileNumber ? s.MobileNumber.toString().trim() : "";
+          return (sRegId === inputRegId && sMobile === inputMobile);
+        });
+      }
+    }
+
+    if (!student) {
+      return { status: 'error', message: 'Verification failed. Registration ID or Mobile Number is incorrect.' };
+    }
+
+    // Check if there is already a pending request of ActionType GracePeriod
+    const otpSheet = getSheet(SHEET_NAMES.ATTENDANCE_OTP);
+    if (otpSheet) {
+      const otpData = getSheetDataAsObjects(otpSheet);
+      const pendingReq = otpData.find(r => 
+        String(r.RegistrationID || "").trim().toLowerCase() === String(inputRegId).toLowerCase() &&
+        String(r.Status || "").trim() === 'Pending' &&
+        String(r.ActionType || "").trim() === 'GracePeriod'
+      );
+      if (pendingReq) {
+        return { status: 'error', message: 'You already have a pending extension request.' };
+      }
+    }
+
+    // Calculate dates
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const end = new Date(today);
+    end.setDate(today.getDate() + parseInt(durationDays));
+
+    const id = "GP-" + new Date().getTime();
+    
+    // Save to ATTENDANCE_OTP
+    const headers = otpSheet.getRange(1, 1, 1, otpSheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+    const rowData = headers.map(h => {
+      switch (h) {
+        case 'ID': return id;
+        case 'RegistrationID': return inputRegId;
+        case 'OTP': return '';
+        case 'ActionType': return 'GracePeriod';
+        case 'ExpiryTimestamp': return end;
+        case 'TargetDate': return today;
+        case 'Reason': return reason;
+        case 'Status': return 'Pending';
+        case 'LeaveType': return 'attendance, diary, tasks, projects';
+        case 'AttachmentUrl': return '';
+        default: return '';
+      }
+    });
+    otpSheet.appendRow(rowData);
+    SpreadsheetApp.flush();
+
+    // Save to STUDENT_REQUESTS
+    const studentName = getStudentFullName_(student);
+    saveStudentRequest_({
+      RequestID: id,
+      RegistrationID: inputRegId,
+      StudentName: studentName,
+      RequestType: 'GracePeriod',
+      TargetDate: today,
+      EndDate: end,
+      Reason: reason,
+      LeaveType: 'attendance, diary, tasks, projects'
+    });
+
+    return { status: 'success', message: 'Extension request submitted successfully.' };
   } catch (e) {
     return { status: 'error', message: e.toString() };
   }
@@ -23687,6 +23898,7 @@ function sendBatchWarning(regIds, customReason) {
 
 /**
  * Generates warning PDF and sends warning email to a single student.
+ * Enhanced with full company letterhead and comprehensive student details.
  */
 function sendStudentWarning(regId, customReason) {
   try {
@@ -23703,122 +23915,184 @@ function sendStudentWarning(regId, customReason) {
       return { status: 'error', message: 'Student email address missing.' };
     }
 
+    // Helper to format dates
+    const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
+    const todayStr = Utilities.formatDate(new Date(), zone, 'dd MMMM yyyy');
+    const fmtDate = (raw) => {
+      if (!raw) return 'N/A';
+      try { return Utilities.formatDate(new Date(raw), zone, 'dd MMMM yyyy'); }
+      catch(e) { return String(raw); }
+    };
+
+    // Student details
+    const college    = d.CollegeName    || 'N/A';
+    const phone      = d.MobileNumber   || 'N/A';
+    const regNo      = d.RegisterNumber || 'N/A';
+    
+    // Query project title from projects sheet
+    let project = '';
+    const projectSheet = getSheet(SHEET_NAMES.PROJECTS);
+    if (projectSheet) {
+      const allProjects = getSheetDataAsObjects(projectSheet) || [];
+      const regIdUpper = String(regId).trim().toUpperCase();
+      const userProj = allProjects.find(p => String(p.StudentRegistrationID || '').trim().toUpperCase() === regIdUpper);
+      if (userProj) {
+        project = String(userProj.Title || userProj.ProjectTitle || userProj.ProjectName || '').trim();
+        if (project.toUpperCase() === 'N/A') {
+          project = '';
+        }
+      }
+    }
+    if (!project) {
+      project = d.InterestedArea || 'N/A';
+    }
+    
+    const department = d.Department || 'N/A';
+    const startDate  = fmtDate(d.InternshipStartDate);
+    const endDate    = fmtDate(d.InternshipEndDate);
+    const batch      = d.Batch          || 'N/A';
+    const wrnRef     = 'WRN-' + regId + '-' + new Date().getFullYear();
+
     const docName = 'Warning_Notice_' + regId + '_' + Date.now();
     const doc = DocumentApp.create(docName);
     const body = doc.getBody();
     
     // Page margins
-    body.setMarginTop(36);
-    body.setMarginBottom(36);
-    body.setMarginLeft(36);
-    body.setMarginRight(36);
+    body.setMarginTop(28.35);   // 1cm
+    body.setMarginBottom(28.35);
+    body.setMarginLeft(50);
+    body.setMarginRight(50);
 
-    // Style helper
-    const titleStyle = {};
-    titleStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-    titleStyle[DocumentApp.Attribute.FONT_SIZE] = 16;
-    titleStyle[DocumentApp.Attribute.BOLD] = true;
-    titleStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#d32f2f';
-    titleStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+    // ── Style helpers ─────────────────────────────────────────────────────────
+    const mkStyle = (size, bold, color, align) => {
+      const s = {};
+      s[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+      s[DocumentApp.Attribute.FONT_SIZE]   = size;
+      s[DocumentApp.Attribute.BOLD]        = !!bold;
+      s[DocumentApp.Attribute.FOREGROUND_COLOR] = color || '#000000';
+      s[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = align || DocumentApp.HorizontalAlignment.LEFT;
+      return s;
+    };
 
-    const headerStyle = {};
-    headerStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-    headerStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
-    headerStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
-    headerStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+    const S_COMPANY  = mkStyle(20, true,  '#b71c1c', DocumentApp.HorizontalAlignment.CENTER);
+    const S_TAGLINE  = mkStyle(9,  false, '#888888', DocumentApp.HorizontalAlignment.CENTER);
+    const S_CONTACT  = mkStyle(9,  false, '#555555', DocumentApp.HorizontalAlignment.CENTER);
+    const S_DIVIDER  = mkStyle(9,  false, '#cccccc', DocumentApp.HorizontalAlignment.CENTER);
+    const S_TITLE    = mkStyle(13, true,  '#b71c1c', DocumentApp.HorizontalAlignment.CENTER);
+    const S_META     = mkStyle(11, false, '#333333', DocumentApp.HorizontalAlignment.LEFT);
+    const S_META_LBL = mkStyle(11, true,  '#555555', DocumentApp.HorizontalAlignment.LEFT);
+    const S_NORMAL   = mkStyle(11, false, '#1a1a1a', DocumentApp.HorizontalAlignment.LEFT);
+    const S_BOLD     = mkStyle(11, true,  '#1a1a1a', DocumentApp.HorizontalAlignment.LEFT);
+    const S_ALERT    = mkStyle(10, true,  '#b71c1c', DocumentApp.HorizontalAlignment.LEFT);
+    const S_SIG_NAME = mkStyle(12, true,  '#000000', DocumentApp.HorizontalAlignment.LEFT);
+    const S_SIG_COMP = mkStyle(11, true,  '#b71c1c', DocumentApp.HorizontalAlignment.LEFT);
+    const S_FOOT     = mkStyle(9,  false, '#999999', DocumentApp.HorizontalAlignment.CENTER);
 
-    const subTitleStyle = {};
-    subTitleStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-    subTitleStyle[DocumentApp.Attribute.FONT_SIZE] = 12;
-    subTitleStyle[DocumentApp.Attribute.BOLD] = true;
-    subTitleStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#333333';
-    subTitleStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+    // ── LETTERHEAD ────────────────────────────────────────────────────────────
+    body.appendParagraph(COMPANY_NAME).setAttributes(S_COMPANY);
+    body.appendParagraph('GSV Electrical Enterprises Internship Portal and R&D Department').setAttributes(S_TAGLINE);
+    body.appendParagraph('📞 ' + COMPANY_CONTACT + '  |  ✉ ' + COMPANY_EMAIL + '  |  🌐 ' + COMPANY_WEBSITE).setAttributes(S_CONTACT);
+    body.appendParagraph('📍 ' + COMPANY_ADDRESS).setAttributes(S_CONTACT);
+    body.appendParagraph('═══════════════════════════════════════════════════════════════════════════').setAttributes(S_DIVIDER);
+    body.appendParagraph('').setAttributes(S_NORMAL);
 
-    const normalStyle = {};
-    normalStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-    normalStyle[DocumentApp.Attribute.FONT_SIZE] = 11;
-    normalStyle[DocumentApp.Attribute.BOLD] = false;
-    normalStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#000000';
-    normalStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.LEFT;
+    // ── DOCUMENT TITLE ────────────────────────────────────────────────────────
+    body.appendParagraph('⚠  OFFICIAL WARNING NOTICE  ⚠').setAttributes(S_TITLE);
+    body.appendParagraph('').setAttributes(S_NORMAL);
 
-    // Company Header
-    const titlePara = body.appendParagraph(COMPANY_NAME);
-    titlePara.setAttributes(titleStyle);
-    
-    const contactPara = body.appendParagraph(`Contact: ${COMPANY_CONTACT} | Web: ${COMPANY_WEBSITE} | Email: gsveeip2026@gmail.com`);
-    contactPara.setAttributes(headerStyle);
-    
-    // Horizontal Line
-    body.appendParagraph("_________________________________________________________________________________")
-        .setAttributes(headerStyle);
-        
-    body.appendParagraph("\n").setAttributes(normalStyle);
+    // ── REF & DATE ROW ────────────────────────────────────────────────────────
+    body.appendParagraph('Ref. No : ' + wrnRef).setAttributes(S_META);
+    body.appendParagraph('Date    : ' + todayStr).setAttributes(S_META);
+    body.appendParagraph('').setAttributes(S_NORMAL);
 
-    // Document Subtitle
-    const subPara = body.appendParagraph("OFFICIAL WARNING NOTICE");
-    subPara.setAttributes(subTitleStyle);
-    
-    body.appendParagraph("\n").setAttributes(normalStyle);
+    // ── STUDENT DETAILS TABLE ─────────────────────────────────────────────────
+    const displayDept = department !== 'N/A' ? (project !== 'N/A' ? 'GSV / ' + department + ' / ' + project : 'GSV / ' + department) : 'N/A';
+    const displayProject = batch;
 
-    // Meta details
-    const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
-    const todayStr = Utilities.formatDate(new Date(), zone, 'yyyy-MM-dd');
-    
-    body.appendParagraph(`Date: ${todayStr}`).setAttributes(normalStyle);
-    body.appendParagraph(`To: ${name}`).setAttributes(normalStyle);
-    body.appendParagraph(`Registration ID: ${regId}`).setAttributes(normalStyle);
-    body.appendParagraph(`Batch: ${d.Batch || 'N/A'}`).setAttributes(normalStyle);
-    body.appendParagraph(`College: ${d.CollegeName || 'N/A'}`).setAttributes(normalStyle);
-    
-    body.appendParagraph("\n").setAttributes(normalStyle);
+    const detailsTable = body.appendTable([
+      ['To (Student Name)',       name],
+      ['Registration ID',         regId],
+      ['Email ID',                email],
+      ['Phone Number',            phone],
+      ['College Name',            college],
+      ['Register Number',         regNo],
+      ['Department',              displayDept],
+      ['Project / Internship Title', displayProject],
+      ['Internship Period',       startDate + ' to ' + endDate],
+    ]);
 
-    // Body content
-    const p1 = body.appendParagraph("Dear " + name + ",");
-    p1.setAttributes(normalStyle);
-    p1.setBold(true);
+    // Style the table
+    const labelCellStyle = {};
+    labelCellStyle[DocumentApp.Attribute.BOLD] = true;
+    labelCellStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
+    labelCellStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    labelCellStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#444444';
+    labelCellStyle[DocumentApp.Attribute.BACKGROUND_COLOR] = '#fafafa';
 
-    body.appendParagraph("\n").setAttributes(normalStyle);
+    const valueCellStyle = {};
+    valueCellStyle[DocumentApp.Attribute.BOLD] = false;
+    valueCellStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
+    valueCellStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    valueCellStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#1a1a1a';
 
-    const warningBodyText = "We are writing to officially issue a warning notice regarding your internship performance. " +
-      "It has been observed that you are delaying the completion of your project. " +
-      "You have not completed it yet, and there is a significant delay on your side, past the project submission period. " +
-      (customReason ? "\n\nDetails: " + customReason + "\n\n" : " ") +
-      "Please be informed that if you continue to delay project submission, or if you take continuous leave for 3 days or more without prior permission, or engage in any other indisciplinary activities, we will terminate you from this internship program immediately.\n\n" +
-      "In case of termination:\n" +
-      "1. All your worked days will be terminated and invalidated.\n" +
-      "2. You will be removed from the internship program at GSV Electrical Enterprises.\n" +
-      "3. You will not be eligible to receive any internship completion certificate from us.\n" +
-      "4. There will be no further relation or correspondence between you and the company.\n\n" +
-      "We expect you to take immediate corrective actions to complete your project tasks and adhere to the rules and regulations.";
-      
-    const p2 = body.appendParagraph(warningBodyText);
-    p2.setAttributes(normalStyle);
-    
-    body.appendParagraph("\n\n").setAttributes(normalStyle);
+    for (let r = 0; r < detailsTable.getNumRows(); r++) {
+      const row = detailsTable.getRow(r);
+      row.getCell(0).getChild(0).setAttributes(labelCellStyle);
+      row.getCell(1).getChild(0).setAttributes(valueCellStyle);
+      // Set column widths if possible
+      try { row.getCell(0).setWidth(180); } catch(e) {}
+    }
 
-    // Signature section
-    const sig1 = body.appendParagraph("Regards,");
-    sig1.setAttributes(normalStyle);
-    sig1.setItalic(true);
-    
-    const sig2 = body.appendParagraph("Proprietor");
-    sig2.setAttributes(normalStyle);
-    sig2.setBold(true);
-    
-    const sig3 = body.appendParagraph("GSV Electrical Enterprises");
-    sig3.setAttributes(normalStyle);
-    
-    body.appendParagraph("\n\n").setAttributes(normalStyle);
-    
-    const footStyle = {};
-    footStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
-    footStyle[DocumentApp.Attribute.FONT_SIZE] = 9;
-    footStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#888888';
-    footStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
-    
-    const footPara = body.appendParagraph("Computer Generated - Digitally Signed");
-    footPara.setAttributes(footStyle);
-    footPara.setItalic(true);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+
+    // ── SALUTATION ────────────────────────────────────────────────────────────
+    const salutation = body.appendParagraph('Dear ' + name + ',');
+    salutation.setAttributes(S_BOLD);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+
+    // ── BODY TEXT ─────────────────────────────────────────────────────────────
+    const warningBodyText =
+      'We are writing to officially issue a warning notice regarding your internship performance at ' +
+      COMPANY_NAME + '. It has been observed that you are delaying the completion of your assigned ' +
+      'project/task. You have not completed it yet, and there is a significant delay on your part, ' +
+      'past the project submission period.' +
+      '\n\nPlease note that the terms and conditions of this internship have already been communicated to you, and all necessary support has been provided. Even if your college reopens, you must obtain On-Duty (OD) permission from your college or coordinate with us to complete and submit your project. Completing and delivering your project is strictly mandatory. Furthermore, even if your project timeline or scheduled duration has expired, you must obtain permission for an extension and ensure that the project is completed and delivered from your side.' +
+      (customReason ? '\n\nSpecific Details: ' + customReason : '') +
+      '\n\nPlease be informed that if you continue to delay project submission, or if you take ' +
+      'continuous leave for 3 or more days without prior permission, or engage in any indisciplinary ' +
+      'activities, we will be constrained to terminate you from this internship program immediately.' +
+      '\n\nIn the event of termination:\n' +
+      '  1. All your worked days will be terminated and invalidated.\n' +
+      '  2. You will be removed from the internship program at ' + COMPANY_NAME + '.\n' +
+      '  3. You will not be eligible to receive any internship completion certificate.\n' +
+      '  4. There will be no further relation or correspondence between you and the company.\n\n' +
+      'We expect you to take immediate corrective action and adhere to the rules and regulations of the organization.';
+
+    body.appendParagraph(warningBodyText).setAttributes(S_NORMAL);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+
+    // ── ALERT / CONSEQUENCE BOX ───────────────────────────────────────────────
+    body.appendParagraph(
+      '⚠  This is an official warning. Failure to take corrective action may result in ' +
+      'immediate termination of your internship and invalidation of all worked days.'
+    ).setAttributes(S_ALERT);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+
+    // ── SIGNATURE ─────────────────────────────────────────────────────────────
+    body.appendParagraph('Regards,').setAttributes(S_NORMAL);
+    body.appendParagraph(COMPANY_CHIEF_ENGINEER + ' .DEEE, BE, MBA').setAttributes(S_SIG_NAME);
+    body.appendParagraph(COMPANY_CHIEF_TITLE).setAttributes(S_META);
+    body.appendParagraph(COMPANY_NAME).setAttributes(S_SIG_COMP);
+    body.appendParagraph('📞 ' + COMPANY_CONTACT + '  |  ✉ ' + COMPANY_EMAIL + '  |  🌐 ' + COMPANY_WEBSITE).setAttributes(S_CONTACT);
+    body.appendParagraph('').setAttributes(S_NORMAL);
+    body.appendParagraph('─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─').setAttributes(S_DIVIDER);
+
+    // ── FOOTER ────────────────────────────────────────────────────────────────
+    body.appendParagraph(
+      '🖥  Digitally Generated — No Physical Signature Required  |  Generated on ' + todayStr + '\n' +
+      'This is an auto-generated official document from ' + COMPANY_NAME + ' Internship Portal.'
+    ).setAttributes(S_FOOT);
 
     // Save and close doc
     doc.saveAndClose();
@@ -23835,26 +24109,106 @@ function sendStudentWarning(regId, customReason) {
     // Trash the temporary doc
     tempFile.setTrashed(true);
 
-    // Send Warning Email
-    const emailSubject = `Official Warning Notice: Internship Performance - ${COMPANY_NAME}`;
+    // ── SEND WARNING EMAIL ────────────────────────────────────────────────────
+    const emailSubject = `Official Warning Notice: Internship Performance — ${COMPANY_NAME}`;
     
     const emailHtmlBody = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px;">
-        <div style="text-align: center; border-bottom: 2px solid #d32f2f; padding-bottom: 10px; margin-bottom: 20px;">
-          <h2 style="color: #d32f2f; margin: 0; text-transform: uppercase;">${COMPANY_NAME}</h2>
-          <span style="font-size: 11px; color: #666;">Contact: ${COMPANY_CONTACT} | Web: ${COMPANY_WEBSITE}</span>
-        </div>
-        <p>Dear <strong>${name}</strong>,</p>
-        <p>This is to inform you that an official Warning Notice has been issued regarding your internship status (Registration ID: <strong>${regId}</strong>).</p>
-        <p style="background-color: #ffebee; border-left: 4px solid #d32f2f; padding: 12px; color: #b71c1c; font-weight: bold;">
-          Warning: Project delay and/or unauthorized absence observed. Continuous unpermitted leave (3 days or more) or project delay will result in immediate termination.
-        </p>
-        <p>Please find the official warning document attached to this email. You are instructed to read it carefully and take immediate corrective actions.</p>
-        <p>If you fail to do so, your internship will be terminated, days worked will be invalidated, and you will not be eligible for certification.</p>
-        <div style="margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 15px; font-size: 12px; color: #555;">
-          <p>Regards,<br><strong>Proprietor</strong><br>${COMPANY_NAME}</p>
-          <hr style="border: none; border-top: 1px dashed #ccc; margin: 15px 0;">
-          <p style="text-align: center; font-style: italic; color: #888;">Computer Generated - Digitally Signed</p>
+      <div style="background: #f1f5f9; padding: 30px 20px; font-family: Arial, sans-serif; text-align: center;">
+        
+        <!-- Styled Email Card -->
+        <div style="background: #ffffff; max-width: 600px; margin: 0 auto; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); overflow: hidden; border-top: 5px solid #d32f2f; text-align: left;">
+          
+          <!-- Email Header Accent -->
+          <div style="background: #fff8f8; padding: 20px 24px; border-bottom: 1px solid #ffe5e5; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <span style="font-size: 16px; font-weight: 800; color: #b71c1c; letter-spacing: 0.5px;">⚡ ${COMPANY_NAME}</span>
+              <div style="font-size: 10px; color: #7f8c8d; margin-top: 2px;">Internship Portal and R&D Department</div>
+            </div>
+            <span style="font-size: 10px; color: #7f8c8d; text-align: right;">
+              Ref: ${wrnRef}
+            </span>
+          </div>
+
+          <div style="padding: 24px;">
+            
+            <!-- Alert Title Badge -->
+            <div style="text-align: center; margin-bottom: 22px;">
+              <span style="display: inline-block; background: #d32f2f; color: #ffffff; font-size: 11px; font-weight: 800; letter-spacing: 2px; padding: 6px 20px; border-radius: 4px; text-transform: uppercase;">
+                ⚠️ Official Warning Notice
+              </span>
+            </div>
+
+            <!-- Details Table -->
+            <table style="width: 100%; border-collapse: collapse; font-size: 11.5px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); text-align: left;">
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; width: 38%; color: #475569;">To (Student Name)</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 600; color: #1e293b;">${name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Registration ID</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-family: monospace; color: #1e293b;">${regId}</td>
+              </tr>
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Email ID</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${email}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Phone Number</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${phone}</td>
+              </tr>
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">College Name</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${college}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Register Number</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${regNo}</td>
+              </tr>
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Department</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${displayDept}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Project / Internship Title</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${displayProject}</td>
+              </tr>
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Internship Period</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${startDate} &nbsp;to&nbsp; ${endDate}</td>
+              </tr>
+            </table>
+
+            <p style="font-size: 13px; font-weight: 700; color: #1e293b; margin-bottom: 12px;">Dear ${name},</p>
+            <div style="font-size: 12px; color: #334155; line-height: 1.65; margin-bottom: 16px; white-space: pre-line; text-align: justify;">
+              This is to inform you that an official Warning Notice has been issued regarding your internship performance at ${COMPANY_NAME}.
+              It has been observed that you are delaying the completion of your assigned project/task past the submission period.
+              <br><br>
+              Please note that the terms and conditions of this internship have already been communicated to you, and all necessary support has been provided. Even if your college reopens, you must obtain On-Duty (OD) permission from your college or coordinate with us to complete and submit your project. Completing and delivering your project is strictly mandatory. Furthermore, even if your project timeline or scheduled duration has expired, you must obtain permission for an extension and ensure that the project is completed and delivered from your side.
+              ${customReason ? '<br><br><strong>Specific Details:</strong> ' + customReason : ''}
+            </div>
+
+            <!-- Alert / Callout Box -->
+            <div style="background: #fff5f5; border-left: 4px solid #f56565; padding: 14px 16px; border-radius: 4px; margin-bottom: 20px; font-size: 11.5px; color: #c53030; line-height: 1.5; font-weight: 600;">
+              ⚠️ Please find the official warning document attached to this email. You are instructed to read it carefully and take immediate corrective action.<br><br>
+              Failure to comply — including continued project delay, unauthorized absence (3+ days), or indiscipline — will result in immediate internship termination, invalidation of all worked days, and ineligibility for the completion certificate.
+            </div>
+
+            <!-- Sender Signature -->
+            <div style="margin-top: 24px; font-size: 12px; color: #334155;">
+              <p style="margin: 0; font-style: italic; color: #64748b;">Regards,</p>
+              <p style="margin: 4px 0 0 0; font-weight: 800; font-size: 13px; color: #1e293b;">${COMPANY_CHIEF_ENGINEER} .DEEE, BE, MBA</p>
+              <p style="margin: 2px 0; color: #64748b;">${COMPANY_CHIEF_TITLE}</p>
+              <p style="margin: 2px 0; font-weight: 700; color: #b71c1c;">${COMPANY_NAME}</p>
+            </div>
+
+            <hr style="border: none; border-top: 1px dashed #e2e8f0; margin: 20px 0;">
+
+            <div style="text-align: center; font-size: 9.5px; color: #94a3b8; font-style: italic; line-height: 1.4;">
+              🖥️ Digitally Generated — No Physical Signature Required &nbsp;|&nbsp; ${todayStr}<br>
+              Auto-generated by ${COMPANY_NAME} Internship Portal.
+            </div>
+
+          </div>
         </div>
       </div>
     `;
@@ -23877,7 +24231,7 @@ function sendStudentWarning(regId, customReason) {
         if (h === 'DocumentID') return docId;
         if (h === 'StudentRegistrationID') return regId;
         if (h === 'DocType') return 'WarningNotice';
-        if (h === 'ReferenceNumber') return docId;
+        if (h === 'ReferenceNumber') return wrnRef;
         if (h === 'DocUrl') return finalPdf.getUrl();
         if (h === 'PdfFileId') return finalPdf.getId();
         if (h === 'GeneratedDate') return new Date();
@@ -23893,4 +24247,5 @@ function sendStudentWarning(regId, customReason) {
     return { status: 'error', message: e.toString() };
   }
 }
+
 

@@ -6372,6 +6372,90 @@
                 return;
             }
 
+            if (loggedInStudentData.graceExpired) {
+                const loadingOverlay = document.getElementById('loadingOverlay');
+                if (loadingOverlay) loadingOverlay.style.display = 'none';
+
+                let overlayHtml = '';
+                if (loggedInStudentData.hasPendingExtension) {
+                    overlayHtml = `
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; width:100vw; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#f8fafc; font-family:'Inter', sans-serif; text-align:center; padding:20px; box-sizing:border-box; position:fixed; top:0; left:0; z-index:999999;">
+                            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.08); border-radius:24px; padding:40px; max-width:550px; width:100%; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.5); backdrop-filter:blur(10px); display:flex; flex-direction:column; align-items:center; gap:20px;">
+                                <div style="width:80px; height:80px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#f59e0b; font-size:2.5rem; margin-bottom:10px; animation: pulse-yellow 2s infinite;">
+                                    <i class="fas fa-hourglass-half"></i>
+                                </div>
+                                <h2 style="font-weight:800; font-size:1.8rem; margin:0; letter-spacing:-0.5px; background:linear-gradient(to right, #f8fafc, #cbd5e1); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Portal Access Expired</h2>
+                                <span style="background:rgba(245, 158, 11, 0.15); color:#fde047; font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:9999px; letter-spacing:0.5px; text-transform:uppercase;">Status: Request Pending</span>
+                                <p style="color:#94a3b8; font-size:0.95rem; line-height:1.6; margin:0;">
+                                    Your grace period has ended. You have already submitted a portal extension request. Please wait for your Industrial Supervisor or Administrator to approve it.
+                                </p>
+                                <div style="height:1px; background:rgba(255, 255, 255, 0.08); width:100%; margin:10px 0;"></div>
+                                <button type="button" onclick="logoutStudent()" style="background:#ef4444; color:white; border:none; border-radius:12px; padding:12px 24px; font-weight:600; cursor:pointer; font-family:inherit; transition: background 0.2s;"><i class="fas fa-sign-out-alt me-2"></i> Log Out</button>
+                            </div>
+                        </div>
+                        <style>
+                            @keyframes pulse-yellow {
+                                0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+                                70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(245, 158, 11, 0); }
+                                100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+                            }
+                        </style>
+                    `;
+                } else {
+                    overlayHtml = `
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; width:100vw; background:linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color:#f8fafc; font-family:'Inter', sans-serif; text-align:center; padding:20px; box-sizing:border-box; position:fixed; top:0; left:0; z-index:999999; overflow-y:auto;">
+                            <div style="background:rgba(255, 255, 255, 0.03); border:1px solid rgba(255, 255, 255, 0.08); border-radius:24px; padding:40px; max-width:550px; width:100%; box-shadow:0 25px 50px -12px rgba(0, 0, 0, 0.5); backdrop-filter:blur(10px); display:flex; flex-direction:column; align-items:center; gap:20px; margin: 40px 0;">
+                                <div style="width:80px; height:80px; background:rgba(239, 68, 68, 0.1); border:1px solid rgba(239, 68, 68, 0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#ef4444; font-size:2.5rem; margin-bottom:10px; animation: pulse-red 2s infinite;">
+                                    <i class="fas fa-hourglass-end"></i>
+                                </div>
+                                <h2 style="font-weight:800; font-size:1.8rem; margin:0; letter-spacing:-0.5px; background:linear-gradient(to right, #f8fafc, #cbd5e1); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Portal Access Expired</h2>
+                                <span style="background:rgba(239, 68, 68, 0.15); color:#fca5a5; font-size:0.75rem; font-weight:700; padding:4px 12px; border-radius:9999px; letter-spacing:0.5px; text-transform:uppercase;">Status: Grace Period Ended</span>
+                                <p style="color:#94a3b8; font-size:0.95rem; line-height:1.6; margin:0;">
+                                    Your internship period and default 15-day grace period have ended. To request an extension of portal access, please submit the form below.
+                                </p>
+                                <div style="height:1px; background:rgba(255, 255, 255, 0.08); width:100%; margin:10px 0;"></div>
+                                
+                                <form id="dashboardExtensionForm" style="width:100%; text-align:left; display:flex; flex-direction:column; gap:15px;" onsubmit="submitExtensionFromDashboard(event)">
+                                    <div style="display:flex; flex-direction:column; gap:6px;">
+                                        <label style="font-weight:600; font-size:0.85rem; color:#cbd5e1;">Requested Duration *</label>
+                                        <select id="dashExtDuration" required style="width:100%; background:#1e293b; border:1px solid #475569; border-radius:8px; padding:10px; color:white; font-family:inherit; font-size:0.9rem;" onchange="toggleDashCustomDays(this.value)">
+                                            <option value="7">1 Week (7 Days)</option>
+                                            <option value="15" selected>15 Days</option>
+                                            <option value="30">1 Month (30 Days)</option>
+                                            <option value="custom">Custom Number of Days</option>
+                                        </select>
+                                    </div>
+                                    <div id="dashCustomDaysGroup" style="display:none; flex-direction:column; gap:6px;">
+                                        <label style="font-weight:600; font-size:0.85rem; color:#cbd5e1;">Enter Number of Days *</label>
+                                        <input type="number" id="dashExtCustomDays" min="1" max="90" placeholder="e.g. 10" style="width:100%; background:#1e293b; border:1px solid #475569; border-radius:8px; padding:10px; color:white; font-family:inherit; font-size:0.9rem; box-sizing:border-box;">
+                                    </div>
+                                    <div style="display:flex; flex-direction:column; gap:6px;">
+                                        <label style="font-weight:600; font-size:0.85rem; color:#cbd5e1;">Reason for Extension *</label>
+                                        <textarea id="dashExtReason" required placeholder="Explain why you need additional portal access" style="width:100%; background:#1e293b; border:1px solid #475569; border-radius:8px; padding:10px; color:white; font-family:inherit; font-size:0.9rem; min-height:80px; resize:vertical; box-sizing:border-box;"></textarea>
+                                    </div>
+                                    <div id="dashExtMessage" style="display:none; padding:10px; border-radius:8px; font-size:0.85rem; font-weight:600;"></div>
+                                    
+                                    <div style="display:flex; gap:10px; margin-top:10px; width:100%;">
+                                        <button type="button" onclick="logoutStudent()" style="flex:1; background:rgba(255, 255, 255, 0.05); border:1px solid rgba(255, 255, 255, 0.1); color:#cbd5e1; border-radius:12px; padding:12px; font-weight:600; cursor:pointer; font-family:inherit; transition: all 0.2s;"><i class="fas fa-sign-out-alt me-1"></i> Log Out</button>
+                                        <button type="submit" id="dashExtSubmitBtn" style="flex:2; background:#10b981; border:none; color:white; border-radius:12px; padding:12px; font-weight:600; cursor:pointer; font-family:inherit; transition: background 0.2s;"><i class="fas fa-paper-plane me-1"></i> Submit Request</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        <style>
+                            @keyframes pulse-red {
+                                0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+                                70% { transform: scale(1.05); box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+                                100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+                            }
+                        </style>
+                    `;
+                }
+
+                document.body.innerHTML = overlayHtml;
+                return;
+            }
+
             // Ensure lists are initialized
             studentData.tasks = studentData.tasks || [];
             studentData.projects = studentData.projects || [];
@@ -6727,10 +6811,11 @@
             const isCompleted = status.includes('completed') || status.includes('ended') || (internEnd && today > internEnd);
             if (isCompleted) {
                 if (internEnd) {
+                    const hasApprovedGrace = permissions.attendance || permissions.diary || permissions.tasks || permissions.projects;
                     const expiryDate = new Date(internEnd);
-                    expiryDate.setDate(expiryDate.getDate() + 31); // 30 days hard expiry
-                    if (today >= expiryDate) {
-                        showErrorModal("Your internship portal access has expired (30-day limit ended).");
+                    expiryDate.setDate(expiryDate.getDate() + 15); // 15 days default grace period
+                    if (!hasApprovedGrace && today >= expiryDate) {
+                        showErrorModal("Your internship portal access has expired (15-day grace period ended).");
                         setTimeout(() => window.location.href = 'Index.html', 5000);
                         return;
                     }
@@ -11516,6 +11601,91 @@
                     showErrorModal(`Logout failed: ${error.message}`);
                 })
                 .studentLogout();
+        }
+
+        function logoutStudent() {
+            studentLogout();
+        }
+
+        function toggleDashCustomDays(val) {
+            const group = document.getElementById('dashCustomDaysGroup');
+            const input = document.getElementById('dashExtCustomDays');
+            if (val === 'custom') {
+                group.style.display = 'flex';
+                input.required = true;
+            } else {
+                group.style.display = 'none';
+                input.required = false;
+                input.value = '';
+            }
+        }
+
+        function submitExtensionFromDashboard(event) {
+            event.preventDefault();
+            const regId = loggedInStudentData.registrationId || loggedInStudentData.RegistrationID;
+            const mobile = loggedInStudentData.mobile || loggedInStudentData.MobileNumber;
+            const durationType = document.getElementById('dashExtDuration').value;
+            const customDays = document.getElementById('dashExtCustomDays').value;
+            const reason = document.getElementById('dashExtReason').value.trim();
+            const messageDiv = document.getElementById('dashExtMessage');
+            const submitBtn = document.getElementById('dashExtSubmitBtn');
+            
+            let days = parseInt(durationType);
+            if (durationType === 'custom') {
+                days = parseInt(customDays);
+                if (isNaN(days) || days < 1 || days > 90) {
+                    messageDiv.style.display = 'block';
+                    messageDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+                    messageDiv.style.color = '#fca5a5';
+                    messageDiv.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                    messageDiv.innerText = 'Please enter a valid number of days between 1 and 90.';
+                    return;
+                }
+            }
+            
+            if (!reason) {
+                messageDiv.style.display = 'block';
+                messageDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+                messageDiv.style.color = '#fca5a5';
+                messageDiv.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                messageDiv.innerText = 'Please enter a reason for your request.';
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            const originalHtml = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Submitting...';
+            
+            google.script.run
+                .withSuccessHandler(function (response) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHtml;
+                    messageDiv.style.display = 'block';
+                    if (response.status === 'success') {
+                        messageDiv.style.background = 'rgba(16, 185, 129, 0.1)';
+                        messageDiv.style.color = '#a7f3d0';
+                        messageDiv.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+                        messageDiv.innerText = '✅ ' + response.message;
+                        setTimeout(() => {
+                            location.reload();
+                        }, 2500);
+                    } else {
+                        messageDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+                        messageDiv.style.color = '#fca5a5';
+                        messageDiv.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                        messageDiv.innerText = '❌ ' + response.message;
+                    }
+                })
+                .withFailureHandler(function (error) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalHtml;
+                    messageDiv.style.display = 'block';
+                    messageDiv.style.background = 'rgba(239, 68, 68, 0.1)';
+                    messageDiv.style.color = '#fca5a5';
+                    messageDiv.style.border = '1px solid rgba(239, 68, 68, 0.2)';
+                    messageDiv.innerText = '❌ Error: ' + error.message;
+                })
+                .submitPortalExtensionRequest(regId, mobile, days, reason);
         }
     </script>
     <script>

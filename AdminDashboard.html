@@ -6006,6 +6006,9 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
         <!-- Send Mail Section -->
         <div id="sendMailSection" class="content-section">
             <div class="card premium-card">
@@ -9030,6 +9033,101 @@
             items.forEach(cb => cb.checked = check);
         }
 
+        function handleCreateBatch(e) {
+            if (e) e.preventDefault();
+            const batchName = document.getElementById('batchName').value.trim();
+            const mentorName = document.getElementById('batchMentor').value.trim();
+            const workArea = document.getElementById('batchWorkArea').value;
+            const description = document.getElementById('batchDescription').value.trim();
+
+            if (!batchName) {
+                showAdminFeedback('Batch name is required', 'error');
+                return;
+            }
+
+            showAdminFeedback('Creating batch...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    closeModal('createBatchModal');
+                    document.getElementById('createBatchForm').reset();
+                    loadBatches();
+                } else {
+                    showAdminFeedback(res.message, 'error');
+                }
+            }).createBatch(batchName, mentorName, workArea, description);
+        }
+
+        async function handleBulkAssignSubmit() {
+            const batchName = document.getElementById('bulkAssignBatchSelect').value;
+            const regIds = JSON.parse(document.getElementById('assignBatchForm').dataset.regIds || '[]');
+
+            if (!batchName) {
+                showAdminFeedback('Please select a batch.', 'warning');
+                return;
+            }
+
+            showAdminFeedback('Processing batch assignment...', 'info');
+            google.script.run
+                .withSuccessHandler(async res => {
+                    if (res.status === 'success') {
+                        showAdminFeedback(res.message, 'success');
+                        closeModal('assignBatchModal');
+                        loadBatches();
+                        loadAllStudentsForManagement();
+                    } else if (res.status === 'confirm_move') {
+                        if (await showConfirmModal(res.message)) {
+                            showAdminFeedback('Moving student(s)...', 'info');
+                            google.script.run
+                                .withSuccessHandler(res2 => {
+                                    if (res2.status === 'success') {
+                                        showAdminFeedback(res2.message, 'success');
+                                        closeModal('assignBatchModal');
+                                        loadBatches();
+                                        loadAllStudentsForManagement();
+                                    } else {
+                                        showAdminFeedback(res2.message, 'error');
+                                    }
+                                })
+                                .withFailureHandler(err => showAdminFeedback('Error: ' + err.message, 'error'))
+                                .assignStudentsToBatch(regIds, batchName, true);
+                        } else {
+                            showAdminFeedback('Assignment cancelled.', 'warning');
+                        }
+                    } else {
+                        showAdminFeedback('Error: ' + res.message, 'error');
+                    }
+                })
+                .assignStudentsToBatch(regIds, batchName, false);
+        }
+
+        function handleChangePasswordSubmit(e) {
+            if (e) e.preventDefault();
+            const currentPass = document.getElementById('currentPassword').value.trim();
+            const newPass = document.getElementById('newPassword').value.trim();
+            const confirmPass = document.getElementById('confirmNewPassword').value.trim();
+
+            if (!currentPass || !newPass || !confirmPass) {
+                showAdminFeedback('All password fields are required', 'error');
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                showAdminFeedback('New passwords do not match', 'error');
+                return;
+            }
+
+            showAdminFeedback('Changing password...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    closeModal('changePasswordModal');
+                    document.getElementById('changePasswordForm').reset();
+                } else {
+                    showAdminFeedback(res.message, 'error');
+                }
+            }).changeAdminPassword(currentPass, newPass);
+        }
 
         // --- DATE UTILITIES ---
         function formatDateSafe(dateInput) {
@@ -9307,10 +9405,7 @@
 
         // --- OTHER UTILITIES ---
         function logAdminActivity(details) {
-            console.log(`Admin Activity: ${details}`);
-            if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.logActivity) {
-                google.script.run.logActivity('Admin Dashboard Action', 'Admin', details);
-            }
+            google.script.run.logActivity('Admin Dashboard Action', 'Admin', details);
         }
 
         // --- BATCH PROJECT & CHAT ---
@@ -9381,6 +9476,400 @@
         // showSuccessToast / showErrorToast moved to line ~12599 to prevent shadowing
 
 
+        function loadAllStudentsForManagement(providedData = null) {
+            const table = document.getElementById('allStudentsTable');
+            if (!table) return;
+            const container = table.querySelector('tbody');
+            if (!container) return;
+
+            if (providedData) {
+                allStudentsData = providedData;
+                renderStudentsTable(providedData, container);
+                return;
+            }
+
+            container.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading students... <i class="fas fa-spinner fa-spin"></i></td></tr>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    allStudentsData = data;
+                    renderStudentsTable(data, container);
+                })
+                .getAllStudents();
+        }
+
+        function renderStudentsTable(data, container) {
+            container.innerHTML = '';
+            if (!data || data.length === 0) {
+                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No students found.</td></tr>';
+                return;
+            }
+
+            // Sort by date descending (newest first)
+            data.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
+
+            data.forEach(s => {
+                const statusClass = (s.status || 'pending').toLowerCase();
+                const tr = document.createElement('tr');
+                tr.dataset.regId = s.registrationId;
+                tr.innerHTML = `
+                    <td class="checkbox-cell"><input type="checkbox" class="form-check-input student-select-checkbox" onchange="updateBulkActionUI('manageStudents')"></td>
+                    <td data-label="Student">
+                        <div class="fw-bold text-primary" style="cursor:pointer;" onclick="openStudentProfileModal('${s.registrationId}')">${s.name}</div>
+                        <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                            ${s.registrationId}
+                            ${s.rfidTag ? `<span class="badge" style="background-color: #f3f0ff; color: #5f3dc4; border: 1px dashed #d6bcfa; font-size: 0.65rem; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-id-card"></i> RFID: ${s.rfidTag}</span>` : ''}
+                        </div>
+                    </td>
+                    <td data-label="College"><div class="small">${s.college || 'N/A'}</div></td>
+                    <td data-label="Batch"><span class="badge bg-light text-dark border">${s.batch || 'None'}</span></td>
+                    <td data-label="Status"><span class="status-badge status-${statusClass}">${s.status}</span></td>
+                    <td data-label="Period"><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
+                    <td data-label="Actions" class="text-end">
+                        <div class="btn-group mobile-action-row">
+                            <button class="action-btn btn-view" title="View Profile" onclick="openStudentProfileModal('${s.registrationId}')"><i class="fas fa-user-circle"></i></button>
+                            <button class="action-btn btn-edit" title="Edit Data" onclick="openEditStudentForm('${s.registrationId}')"><i class="fas fa-pencil-alt"></i></button>
+                            <button class="action-btn btn-email" title="Chat" onclick="openAdminChat('${s.registrationId}', '${s.name}')"><i class="fas fa-comments"></i></button>
+                        </div>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        function openEditStudentForm(regId) {
+            const student = allStudentsData.find(s => s.registrationId === regId);
+            if (!student) {
+                showAdminFeedback('Student not found for editing', 'error');
+                return;
+            }
+
+            // Open the profile modal with autoEdit enabled
+            openStudentProfileModal(regId, true);
+        }
+
+        function handleUpdateStudentData(e) {
+            if (e) e.preventDefault();
+            const form = e.target;
+            const regId = form.dataset.regId || window.currentProfileRegId;
+
+            const inputs = form.querySelectorAll('input, select, textarea');
+            const data = { registrationId: regId };
+            inputs.forEach(input => {
+                if (input.name) data[input.name] = input.value;
+            });
+
+            showAdminFeedback('Updating student details...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    // Reload if in profile modal
+                    if (window.currentProfileRegId === regId) openStudentProfileModal(regId);
+                    loadAllStudentsForManagement();
+                } else {
+                    showAdminFeedback(res.message, 'error');
+                }
+            }).updateStudentProfile(data);
+        }
+
+        function handleSendMailFormSubmit(e) {
+            if (e) e.preventDefault();
+            const regIdEl = document.getElementById('mailRecipientRegId');
+            if (!regIdEl) return;
+            const regId = regIdEl.value.trim();
+            const subject = document.getElementById('mailSubject').value.trim();
+            const body = document.getElementById('mailBody').value.trim();
+
+            if (!regId || !subject || !body) {
+                showAdminFeedback('Recipient, Subject and Body are all required', 'error');
+                return;
+            }
+
+            showAdminFeedback('Sending email...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    const form = document.getElementById('sendMailForm');
+                    if (form) form.reset();
+                    const nameDisp = document.getElementById('mailRecipientNameDisplay');
+                    if (nameDisp) nameDisp.textContent = '';
+                } else {
+                    showAdminFeedback(res.message, 'error');
+                }
+            }).sendManualEmail(regId, subject, body);
+        }
+
+        // --- NAVIGATION & LOADERS ---
+        function loadBatches() {
+            const container = document.getElementById('batchesList');
+            if (!container) return;
+            container.innerHTML = '<div class="text-center p-4">Loading batches... <i class="fas fa-spinner fa-spin"></i></div>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    window.batchesData = data;
+                    renderBatchesTable(data);
+                })
+                .getBatches();
+        }
+
+        function renderBatchesTable(data) {
+            const container = document.getElementById('batchesList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No batches found. Create one to get started.</div>';
+                return;
+            }
+
+            data.forEach(batch => {
+                const card = document.createElement('div');
+                card.className = 'batch-card';
+                card.innerHTML = `
+                    <div class="batch-header">
+                        <div class="batch-name">${batch.name}</div>
+                        <div class="batch-meta">${batch.count || 0} Students | Supervisor: ${batch.mentor || 'Unassigned'}</div>
+                    </div>
+                    <div class="batch-actions">
+                        <button class="action-btn btn-view" title="View Members" onclick="openBatchEditModal('${batch.name}')"><i class="fas fa-users"></i></button>
+                        <button class="action-btn btn-edit" title="Edit Projects" onclick="showBatchProjectDetails('${batch.name}')"><i class="fas fa-project-diagram"></i></button>
+                        <button class="action-btn btn-email" title="Batch Chat" onclick="openBatchChat('${batch.name}')"><i class="fas fa-comments"></i></button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function loadApplications() {
+            const container = document.getElementById('applicationList');
+            if (!container) return;
+            container.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading applications... <i class="fas fa-spinner fa-spin"></i></td></tr>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    applicationsData = data;
+                    renderApplicationsTable(data);
+                })
+                .getApplications();
+        }
+
+        function renderApplicationsTable(data) {
+            const container = document.getElementById('applicationList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const pendingApps = data.filter(a => a.status === 'Pending');
+            if (pendingApps.length === 0) {
+                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No pending applications.</td></tr>';
+                return;
+            }
+
+            // Sort by date descending (newest first)
+            pendingApps.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
+
+            pendingApps.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div class="fw-bold">${s.name}</div>
+                        <div class="small text-muted">${s.registrationId}</div>
+                    </td>
+                    <td><div class="small">${s.college || 'N/A'}</div></td>
+                    <td><div class="small">${s.department || 'N/A'}</div></td>
+                    <td><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
+                    <td><div class="small">${s.durationDays || 0} Days</div></td>
+                    <td class="text-end">
+                        <button class="action-btn btn-approve" title="Approve" onclick="processApplication('${s.registrationId}', 'Approved')"><i class="fas fa-check"></i></button>
+                        <button class="action-btn btn-reject" title="Reject" onclick="processApplication('${s.registrationId}', 'Rejected')"><i class="fas fa-times"></i></button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        function processApplication(regId, action) {
+            confirmAction(`${action} Application?`, `Are you sure you want to ${action.toLowerCase()} this application?`, `Yes, ${action}`, 'question', action === 'Approved' ? '#28a745' : '#dc3545').then((result) => {
+                if (result.isConfirmed) {
+                    showAdminFeedback(`Processing ${action.toLowerCase()}...`, 'info');
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.status === 'success') {
+                            showAdminFeedback(res.message, 'success');
+                            loadApplications();
+                            loadDashboardStats();
+                        } else {
+                            showAdminFeedback(res.message, 'error');
+                        }
+                    }).updateApplicationStatus(regId, action);
+                }
+            });
+        }
+
+        function openBatchEditModal(batchName) {
+            currentEditingBatch = batchName;
+            const titleEl = document.getElementById('editBatchTitle');
+            if (titleEl) titleEl.textContent = `Manage Members: ${batchName}`;
+            loadBatchMembers(batchName);
+            openModal('editBatchModal');
+        }
+
+        function loadBatchMembers(batchName) {
+            const container = document.getElementById('batchMembersList');
+            if (!container) return;
+            container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading members...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    renderBatchMembers(data, batchName);
+                })
+                .getBatchMembers(batchName);
+        }
+
+        function renderBatchMembers(members, batchName) {
+            const container = document.getElementById('batchMembersList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!members || members.length === 0) {
+                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No students in this batch.</td></tr>';
+                return;
+            }
+
+            members.forEach(m => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div class="fw-bold">${m.name}</div>
+                        <div class="small text-muted">${m.registrationId}</div>
+                    </td>
+                    <td><div class="small">${m.college || 'N/A'}</div></td>
+                    <td><span class="status-badge status-${(m.status || '').toLowerCase()}">${m.status}</span></td>
+                    <td class="text-end">
+                        <button class="action-btn btn-reject" title="Remove from Batch" onclick="removeStudentFromBatch('${m.registrationId}', '${batchName}')"><i class="fas fa-user-minus"></i></button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        function removeStudentFromBatch(regId, batchName) {
+            confirmAction('Remove Student?', `Remove student ${regId} from ${batchName}?`, 'Yes, remove').then((result) => {
+                if (result.isConfirmed) {
+                    showAdminFeedback('Removing student...', 'info');
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.status === 'success') {
+                            showAdminFeedback(res.message, 'success');
+                            loadBatchMembers(batchName);
+                            loadBatches(); // Update counts
+                        } else {
+                            showAdminFeedback(res.message, 'error');
+                        }
+                    }).removeStudentsFromBatch([regId], batchName);
+                }
+            });
+        }
+
+        function addStudentToBatchManual() {
+            const regIdEl = document.getElementById('newBatchMemberRegId');
+            if (!regIdEl) return;
+            const regId = regIdEl.value.trim();
+            if (!regId) return;
+
+            showAdminFeedback('Adding student...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    regIdEl.value = '';
+                    loadBatchMembers(currentEditingBatch);
+                    loadBatches();
+                } else {
+                    showAdminFeedback(res.message, 'error');
+                }
+            }).assignStudentsToBatch([regId], currentEditingBatch);
+        }
+
+        // Redundant loadRfidInventory removed. Superseded by loadRfidManagement() at line 16648.
+
+        // makeDraggable defined later in file with button-click guards\n
+        function formatTime(timeStr) {
+            if (!timeStr) return '--:--';
+            if (timeStr instanceof Date) {
+                return timeStr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            return timeStr;
+        }
+
+        function loadDashboardStats() {
+            const container = document.getElementById('dashboardStats');
+            if (container) container.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    renderDashboardStats(data, container);
+                })
+                .getDashboardStats();
+        }
+
+
+
+        function loadRecentActivity() {
+            const container = document.getElementById('recentActivityList');
+            if (container) container.innerHTML = '<div class="text-center p-3 text-muted small">Loading activity...</div>';
+
+            google.script.run
+                .withSuccessHandler(activities => {
+                    if (container) {
+                        if (activities && activities.length > 0) {
+                            container.innerHTML = activities.slice(0, 10).map(a => `
+                                <div class="activity-item py-2 border-bottom">
+                                    <div class="small fw-bold">${a.action || 'Action'}</div>
+                                    <div class="small text-muted">${a.details || ''} - ${formatDetailedDate(a.timestamp)}</div>
+                                </div>
+                            `).join('');
+                        } else {
+                            container.innerHTML = '<div class="text-center p-3 text-muted small">No recent activity</div>';
+                        }
+                    }
+                })
+                .getRecentActivity();
+        }
+
+        function loadAdminFiles() {
+            const container = document.getElementById('adminFileList');
+            if (container) container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading files...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(files => {
+                    renderAdminFiles(files);
+                })
+                .getAdminFiles();
+        }
+
+        function renderAdminFiles(files) {
+            const container = document.getElementById('adminFileList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!files || files.length === 0) {
+                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No files found.</td></tr>';
+                return;
+            }
+
+            files.forEach(f => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><div class="fw-bold"><i class="fas fa-file-alt me-2"></i> ${f.name}</div></td>
+                    <td><div class="small text-muted">${f.type || 'File'}</div></td>
+                    <td><div class="small">${formatDateSafe(f.date)}</div></td>
+                    <td class="text-end">
+                        <a href="${f.url}" target="_blank" class="action-btn btn-view"><i class="fas fa-eye"></i></a>
+                        <button class="action-btn btn-reject" onclick="deleteAdminFile('${f.id}')"><i class="fas fa-trash"></i></button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
         function loadDashboardAttendanceWidget() {
             const container = document.getElementById('attendanceOverviewList');
             if (container) container.innerHTML = '<tr><td colspan="6" class="text-center p-3">Loading overview...</td></tr>';
@@ -9422,6 +9911,37 @@
 
 
 
+        function renderDashboardStats(data, container) {
+            if (!container) return;
+
+            const stats = data || {};
+            container.innerHTML = `
+                <div class="col-md-3">
+                    <div class="stat-card bg-primary text-white p-3 rounded-3 shadow-sm">
+                        <div class="stat-label opacity-75 small">Total Students</div>
+                        <div class="stat-value h4 mb-0 fw-bold">${stats.totalStudents || 0}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card bg-success text-white p-3 rounded-3 shadow-sm">
+                        <div class="stat-label opacity-75 small">Active Interns</div>
+                        <div class="stat-value h4 mb-0 fw-bold">${stats.activeInterns || 0}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card bg-warning text-dark p-3 rounded-3 shadow-sm">
+                        <div class="stat-label opacity-75 small">Pending Applications</div>
+                        <div class="stat-value h4 mb-0 fw-bold">${stats.pendingApplications || 0}</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stat-card bg-info text-white p-3 rounded-3 shadow-sm">
+                        <div class="stat-label opacity-75 small">Present Today</div>
+                        <div class="stat-value h4 mb-0 fw-bold">${stats.presentToday || 0}</div>
+                    </div>
+                </div>
+            `;
+        }
 
         // Pre-create debounced function for attendance filter
         const debouncedLoadAttendance = (function () {
@@ -9499,6 +10019,10 @@
             // Dashboard Default
             showSection('dashboard', document.querySelector('.sidebar-nav a[onclick*="dashboard"]'), true, false);
 
+            // Pre-fetch Management Data
+            loadAllStudentsForManagement();
+            loadBatches();
+            populateBatchDropdowns();
 
             // Setup Form Handlers
             setupFormEventListeners();
@@ -13497,6 +14021,38 @@
             table.style.display = '';
         }
 
+        function toggleRowDropdown(btn) {
+            const dropdown = btn.nextElementSibling;
+            const isVisible = dropdown.style.display === 'block';
+
+            // Close all other dropdowns
+            document.querySelectorAll('.dropdown-menu-row').forEach(d => d.style.display = 'none');
+
+            if (!isVisible) {
+                dropdown.style.display = 'block';
+
+                // Smart Positioning: Prevent vertical clipping at the bottom of the viewport/container
+                const rect = dropdown.getBoundingClientRect();
+                const vh = window.innerHeight || document.documentElement.clientHeight;
+
+                if (rect.bottom > vh - 20) {
+                    // If it would overflow the bottom, flip it to show above the button
+                    dropdown.style.top = 'auto';
+                    dropdown.style.bottom = '100%';
+                    dropdown.style.marginTop = '0';
+                    dropdown.style.marginBottom = '8px';
+                    dropdown.style.transformOrigin = 'bottom right';
+                } else {
+                    // Default: show below the button
+                    dropdown.style.top = '100%';
+                    dropdown.style.bottom = 'auto';
+                    dropdown.style.marginTop = '8px';
+                    dropdown.style.marginBottom = '0';
+                    dropdown.style.transformOrigin = 'top right';
+                }
+            }
+        }
+
         let allAdminFilesData = [];
         let currentFileTypeFilter = 'All';
         const FOLDERS_PAGE_SIZE = 12;
@@ -14259,37 +14815,18 @@
             });
 
             const isVisible = menu.style.display === 'block';
-            const show = !isVisible;
-            menu.style.display = show ? 'block' : 'none';
+            menu.style.display = isVisible ? 'none' : 'block';
 
-            if (show) {
-                // Smart Positioning: Prevent vertical clipping at the bottom of the viewport/container
-                const rect = menu.getBoundingClientRect();
-                const vh = window.innerHeight || document.documentElement.clientHeight;
-
-                if (rect.bottom > vh - 20) {
-                    // If it would overflow the bottom, flip it to show above the button
-                    menu.style.top = 'auto';
-                    menu.style.bottom = '100%';
-                    menu.style.marginTop = '0';
-                    menu.style.marginBottom = '8px';
-                    menu.style.transformOrigin = 'bottom right';
-                } else {
-                    // Default: show below the button
-                    menu.style.top = '100%';
-                    menu.style.bottom = 'auto';
-                    menu.style.marginTop = '8px';
-                    menu.style.marginBottom = '0';
-                    menu.style.transformOrigin = 'top right';
-                }
-
-                // Close on click outside
+            // Close on click outside
+            if (menu.style.display === 'block') {
                 const closeHandler = (e) => {
+                    // Check if click is outside the menu AND outside the toggle button
                     if (!menu.contains(e.target) && !btn.contains(e.target)) {
                         menu.style.display = 'none';
                         document.removeEventListener('click', closeHandler);
                     }
                 };
+                // Delay listener attachment to avoid immediate trigger from current click
                 setTimeout(() => {
                     document.addEventListener('click', closeHandler);
                 }, 100);
@@ -15311,6 +15848,10 @@
                 .processUnifiedAdminRequestsBatch(requestsList, action);
         }
 
+        function logAdminActivity(activity) {
+            // In a real implementation, this would log to the server
+            console.log(`Admin Activity: ${activity}`);
+        }
 
         // Attendance mode state
         let currentAttendanceMode = 'all';
@@ -15364,6 +15905,25 @@
         let allStudentsDataCache = null;
         let attendanceSearchTimer = null;
 
+        function formatDateISO(date) {
+            if (!date) return '';
+            const d = new Date(date);
+            if (isNaN(d.getTime())) {
+                // Try parsing DD/MM/YYYY
+                if (typeof date === 'string' && date.includes('/')) {
+                    const parts = date.split('/');
+                    if (parts.length === 3) {
+                        const day = parseInt(parts[0]);
+                        const month = parseInt(parts[1]) - 1;
+                        const year = parseInt(parts[2]);
+                        const d2 = new Date(year, month, day);
+                        if (!isNaN(d2.getTime())) return d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0') + '-' + String(d2.getDate()).padStart(2, '0');
+                    }
+                }
+                return '';
+            }
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
 
         function handleAttendanceGlobalSearch(val) {
             const suggestions = document.getElementById('attendanceSuggestions');
@@ -20126,6 +20686,19 @@
         }
         setInterval(initUniversalSmartSearch, 2000);
 
+        function pingRfidDevice(mac, btn = null) {
+            if (btn) btn.disabled = true;
+            showAdminFeedback(`Pinging device ${mac}...`, 'info');
+
+            google.script.run.withSuccessHandler(res => {
+                if (btn) btn.disabled = false;
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                } else {
+                    showAdminFeedback('Error: ' + res.message, 'error');
+                }
+            }).setRfidDeviceCommand(mac, 'PING');
+        }
 
         function triggerRemoteCapture(mac = 'ALL', btn = null) {
             if (btn) btn.disabled = true;
@@ -20219,200 +20792,7 @@
                 }, 5000);
             }).pingRfidHardware(mac);
         }
-
-        // --- NEW: handleBulkAssignSubmit ---
-        async function handleBulkAssignSubmit() {
-            const batchName = document.getElementById('bulkAssignBatchSelect').value;
-            const regIds = JSON.parse(document.getElementById('assignBatchForm').dataset.regIds || '[]');
-
-            if (!batchName) {
-                showAdminFeedback('Please select a batch.', 'warning');
-                return;
-            }
-
-            showAdminFeedback('Processing batch assignment...', 'info');
-            google.script.run
-                .withSuccessHandler(async res => {
-                    if (res.status === 'success') {
-                        showAdminFeedback(res.message, 'success');
-                        closeModal('assignBatchModal');
-                        loadBatches();
-                        loadAllStudentsForManagement();
-                    } else if (res.status === 'confirm_move') {
-                        if (await showConfirmModal(res.message)) {
-                            showAdminFeedback('Moving student(s)...', 'info');
-                            google.script.run
-                                .withSuccessHandler(res2 => {
-                                    if (res2.status === 'success') {
-                                        showAdminFeedback(res2.message, 'success');
-                                        closeModal('assignBatchModal');
-                                        loadBatches();
-                                        loadAllStudentsForManagement();
-                                    } else {
-                                        showAdminFeedback(res2.message, 'error');
-                                    }
-                                })
-                                .withFailureHandler(err => showAdminFeedback('Error: ' + err.message, 'error'))
-                                .assignStudentsToBatch(regIds, batchName, true);
-                        } else {
-                            showAdminFeedback('Assignment cancelled.', 'warning');
-                        }
-                    } else {
-                        showAdminFeedback('Error: ' + res.message, 'error');
-                    }
-                })
-                .assignStudentsToBatch(regIds, batchName, false);
-        }
-
-        // --- NEW: renderStudentsTable ---
-        function renderStudentsTable(data, container) {
-            container.innerHTML = '';
-            if (!data || data.length === 0) {
-                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No students found.</td></tr>';
-                return;
-            }
-
-            // Sort by date descending (newest first)
-            data.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
-
-            data.forEach(s => {
-                const statusClass = (s.status || 'pending').toLowerCase();
-                const tr = document.createElement('tr');
-                tr.dataset.regId = s.registrationId;
-                tr.innerHTML = `
-                    <td class="checkbox-cell"><input type="checkbox" class="form-check-input student-select-checkbox" onchange="updateBulkActionUI('manageStudents')"></td>
-                    <td data-label="Student">
-                        <div class="fw-bold text-primary" style="cursor:pointer;" onclick="openStudentProfileModal('${s.registrationId}')">${s.name}</div>
-                        <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
-                            ${s.registrationId}
-                            ${s.rfidTag ? `<span class="badge" style="background-color: #f3f0ff; color: #5f3dc4; border: 1px dashed #d6bcfa; font-size: 0.65rem; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-id-card"></i> RFID: ${s.rfidTag}</span>` : ''}
-                        </div>
-                    </td>
-                    <td data-label="College"><div class="small">${s.college || 'N/A'}</div></td>
-                    <td data-label="Batch"><span class="badge bg-light text-dark border">${s.batch || 'None'}</span></td>
-                    <td data-label="Status"><span class="status-badge status-${statusClass}">${s.status}</span></td>
-                    <td data-label="Period"><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
-                    <td data-label="Actions" class="text-end">
-                        <div class="btn-group mobile-action-row">
-                            <button class="action-btn btn-view" title="View Profile" onclick="openStudentProfileModal('${s.registrationId}')"><i class="fas fa-user-circle"></i></button>
-                            <button class="action-btn btn-edit" title="Edit Data" onclick="openEditStudentForm('${s.registrationId}')"><i class="fas fa-pencil-alt"></i></button>
-                            <button class="action-btn btn-email" title="Chat" onclick="openAdminChat('${s.registrationId}', '${s.name}')"><i class="fas fa-comments"></i></button>
-                        </div>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-
-        // --- NEW: openEditStudentForm ---
-        function openEditStudentForm(regId) {
-            const student = allStudentsData.find(s => s.registrationId === regId);
-            if (!student) {
-                showAdminFeedback('Student not found for editing', 'error');
-                return;
-            }
-
-            // Open the profile modal with autoEdit enabled
-            openStudentProfileModal(regId, true);
-        }
-
-        // --- NEW: renderBatchesTable ---
-        function renderBatchesTable(data) {
-            const container = document.getElementById('batchesList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="alert alert-info">No batches found. Create one to get started.</div>';
-                return;
-            }
-
-            data.forEach(batch => {
-                const card = document.createElement('div');
-                card.className = 'batch-card';
-                card.innerHTML = `
-                    <div class="batch-header">
-                        <div class="batch-name">${batch.name}</div>
-                        <div class="batch-meta">${batch.count || 0} Students | Supervisor: ${batch.mentor || 'Unassigned'}</div>
-                    </div>
-                    <div class="batch-actions">
-                        <button class="action-btn btn-view" title="View Members" onclick="openBatchEditModal('${batch.name}')"><i class="fas fa-users"></i></button>
-                        <button class="action-btn btn-edit" title="Edit Projects" onclick="showBatchProjectDetails('${batch.name}')"><i class="fas fa-project-diagram"></i></button>
-                        <button class="action-btn btn-email" title="Batch Chat" onclick="openBatchChat('${batch.name}')"><i class="fas fa-comments"></i></button>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        // --- NEW: processApplication ---
-        function processApplication(regId, action) {
-            confirmAction(`${action} Application?`, `Are you sure you want to ${action.toLowerCase()} this application?`, `Yes, ${action}`, 'question', action === 'Approved' ? '#28a745' : '#dc3545').then((result) => {
-                if (result.isConfirmed) {
-                    showAdminFeedback(`Processing ${action.toLowerCase()}...`, 'info');
-                    google.script.run.withSuccessHandler(res => {
-                        if (res.status === 'success') {
-                            showAdminFeedback(res.message, 'success');
-                            loadApplications();
-                            loadDashboardStats();
-                        } else {
-                            showAdminFeedback(res.message, 'error');
-                        }
-                    }).updateApplicationStatus(regId, action);
-                }
-            });
-        }
-
-        // --- NEW: openBatchEditModal ---
-        function openBatchEditModal(batchName) {
-            currentEditingBatch = batchName;
-            const titleEl = document.getElementById('editBatchTitle');
-            if (titleEl) titleEl.textContent = `Manage Members: ${batchName}`;
-            loadBatchMembers(batchName);
-            openModal('editBatchModal');
-        }
-
-        // --- NEW: loadBatchMembers ---
-        function loadBatchMembers(batchName) {
-            const container = document.getElementById('batchMembersList');
-            if (!container) return;
-            container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading members...</td></tr>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    renderBatchMembers(data, batchName);
-                })
-                .getBatchMembers(batchName);
-        }
-
-        // --- NEW: renderBatchMembers ---
-        function renderBatchMembers(members, batchName) {
-            const container = document.getElementById('batchMembersList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            if (!members || members.length === 0) {
-                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No students in this batch.</td></tr>';
-                return;
-            }
-
-            members.forEach(m => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>
-                        <div class="fw-bold">${m.name}</div>
-                        <div class="small text-muted">${m.registrationId}</div>
-                    </td>
-                    <td><div class="small">${m.college || 'N/A'}</div></td>
-                    <td><span class="status-badge status-${(m.status || '').toLowerCase()}">${m.status}</span></td>
-                    <td class="text-end">
-                        <button class="action-btn btn-reject" title="Remove from Batch" onclick="removeStudentFromBatch('${m.registrationId}', '${batchName}')"><i class="fas fa-user-minus"></i></button>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-</script>
+    </script>
 
     <!-- Ping Details Modal -->
     <div class="modal fade" id="pingDetailsModal" tabindex="-1" aria-hidden="true">
