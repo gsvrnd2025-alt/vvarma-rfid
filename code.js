@@ -23928,29 +23928,25 @@ function sendStudentWarning(regId, customReason) {
     const college    = d.CollegeName    || 'N/A';
     const phone      = d.MobileNumber   || 'N/A';
     const regNo      = d.RegisterNumber || 'N/A';
-    
-    // Query project title from projects sheet
-    let project = '';
-    const projectSheet = getSheet(SHEET_NAMES.PROJECTS);
-    if (projectSheet) {
-      const allProjects = getSheetDataAsObjects(projectSheet) || [];
-      const regIdUpper = String(regId).trim().toUpperCase();
-      const userProj = allProjects.find(p => String(p.StudentRegistrationID || '').trim().toUpperCase() === regIdUpper);
-      if (userProj) {
-        project = String(userProj.Title || userProj.ProjectTitle || userProj.ProjectName || '').trim();
-        if (project.toUpperCase() === 'N/A') {
-          project = '';
-        }
+    const department = d.Department     || 'N/A';
+    const batch      = d.Batch          || 'N/A';
+
+    // Query batch details from batches sheet to get SkillLearned and WorkArea fallbacks
+    let skillLearned = 'N/A';
+    let batchWorkArea = 'N/A';
+    const batchSheet = getSheet(SHEET_NAMES.BATCHES);
+    if (batchSheet && batch && batch !== 'N/A') {
+      const allBatches = getSheetDataAsObjects(batchSheet) || [];
+      const userBatch = allBatches.find(b => String(b.BatchName || b.BatchID || '').trim().toLowerCase() === String(batch).trim().toLowerCase());
+      if (userBatch) {
+        skillLearned = String(userBatch.SkillLearned || userBatch['Skill Learned'] || '').trim() || 'N/A';
+        batchWorkArea = String(userBatch.WorkArea || '').trim() || 'N/A';
       }
     }
-    if (!project) {
-      project = d.InterestedArea || 'N/A';
-    }
-    
-    const department = d.Department || 'N/A';
+
+    const workAreaVal = d.InterestedArea || batchWorkArea || 'N/A';
     const startDate  = fmtDate(d.InternshipStartDate);
     const endDate    = fmtDate(d.InternshipEndDate);
-    const batch      = d.Batch          || 'N/A';
     const wrnRef     = 'WRN-' + regId + '-' + new Date().getFullYear();
 
     const docName = 'Warning_Notice_' + regId + '_' + Date.now();
@@ -24006,9 +24002,6 @@ function sendStudentWarning(regId, customReason) {
     body.appendParagraph('').setAttributes(S_NORMAL);
 
     // ── STUDENT DETAILS TABLE ─────────────────────────────────────────────────
-    const displayDept = department !== 'N/A' ? (project !== 'N/A' ? 'GSV / ' + department + ' / ' + project : 'GSV / ' + department) : 'N/A';
-    const displayProject = batch;
-
     const detailsTable = body.appendTable([
       ['To (Student Name)',       name],
       ['Registration ID',         regId],
@@ -24016,8 +24009,10 @@ function sendStudentWarning(regId, customReason) {
       ['Phone Number',            phone],
       ['College Name',            college],
       ['Register Number',         regNo],
-      ['Department',              displayDept],
-      ['Project / Internship Title', displayProject],
+      ['Department',              department],
+      ['Work Area',               workAreaVal],
+      ['Batch',                   batch],
+      ['Project / Internship Title', skillLearned],
       ['Internship Period',       startDate + ' to ' + endDate],
     ]);
 
@@ -24166,11 +24161,19 @@ function sendStudentWarning(regId, customReason) {
               </tr>
               <tr style="background: #fbfbfb;">
                 <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Department</td>
-                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${displayDept}</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${department}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Work Area</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b;">${workAreaVal}</td>
+              </tr>
+              <tr style="background: #fbfbfb;">
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Batch</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${batch}</td>
               </tr>
               <tr>
                 <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Project / Internship Title</td>
-                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${displayProject}</td>
+                <td style="padding: 8px 12px; border: 1px solid #eef2f6; color: #1e293b; font-weight: 600;">${skillLearned}</td>
               </tr>
               <tr style="background: #fbfbfb;">
                 <td style="padding: 8px 12px; border: 1px solid #eef2f6; font-weight: 700; color: #475569;">Internship Period</td>

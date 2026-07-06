@@ -23737,8 +23737,21 @@
             const phone = s.mobile || s.mobileNumber || s.MobileNumber || 'N/A';
             const regNo = s.registerNumber || s.RegisterNumber || 'N/A';
             
-            const displayDept = `GSV / ${s.department || s.Department || 'N/A'} / ${s.projectName || s.interestedArea || s.InterestedArea || 'N/A'}`;
-            const displayProject = s.batch || s.Batch || 'N/A';
+            // Lookup batch details from window.batchesData
+            let skillLearned = 'N/A';
+            let batchWorkArea = 'N/A';
+            const batchVal = s.batch || s.Batch || 'N/A';
+            if (window.batchesData && Array.isArray(window.batchesData) && batchVal !== 'N/A') {
+                const bObj = window.batchesData.find(b => String(b.name || b.id || '').trim().toLowerCase() === String(batchVal).trim().toLowerCase());
+                if (bObj) {
+                    skillLearned = bObj.skillLearned || 'N/A';
+                    batchWorkArea = bObj.workArea || 'N/A';
+                }
+            }
+
+            const workAreaVal = s.interestedArea || s.InterestedArea || batchWorkArea || 'N/A';
+            const deptVal = s.department || s.Department || 'N/A';
+            const batchValDisp = s.batch || s.Batch || 'N/A';
 
             const startRaw = s.internshipStartDate || s.InternshipStartDate;
             const endRaw = s.internshipEndDate || s.InternshipEndDate;
@@ -23812,11 +23825,19 @@
                   </tr>
                   <tr style="background: #fafafa;">
                     <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Department</td>
-                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${displayDept}</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${deptVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Work Area</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${workAreaVal}</td>
+                  </tr>
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Batch</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${batchValDisp}</td>
                   </tr>
                   <tr>
                     <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Project / Internship Title</td>
-                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${displayProject}</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${skillLearned}</td>
                   </tr>
                   <tr style="background: #fafafa;">
                     <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Internship Period</td>
@@ -23868,8 +23889,21 @@
             const phone = s.mobile || s.mobileNumber || s.MobileNumber || 'N/A';
             const regNo = s.registerNumber || s.RegisterNumber || 'N/A';
             
-            const displayDept = `GSV / ${s.department || s.Department || 'N/A'} / ${s.projectName || s.interestedArea || s.InterestedArea || 'N/A'}`;
-            const displayProject = s.batch || s.Batch || 'N/A';
+            // Lookup batch details from window.batchesData
+            let skillLearned = 'N/A';
+            let batchWorkArea = 'N/A';
+            const batchVal = s.batch || s.Batch || 'N/A';
+            if (window.batchesData && Array.isArray(window.batchesData) && batchVal !== 'N/A') {
+                const bObj = window.batchesData.find(b => String(b.name || b.id || '').trim().toLowerCase() === String(batchVal).trim().toLowerCase());
+                if (bObj) {
+                    skillLearned = bObj.skillLearned || 'N/A';
+                    batchWorkArea = bObj.workArea || 'N/A';
+                }
+            }
+
+            const workAreaVal = s.interestedArea || s.InterestedArea || batchWorkArea || 'N/A';
+            const deptVal = s.department || s.Department || 'N/A';
+            const batchValDisp = s.batch || s.Batch || 'N/A';
 
             const startRaw = s.internshipStartDate || s.InternshipStartDate;
             const endRaw = s.internshipEndDate || s.InternshipEndDate;
@@ -23892,7 +23926,7 @@
                 <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">⚡ GSV ELECTRICAL ENTERPRISES</div>
                 <div style="font-size: 11px; opacity: 0.85; margin-top: 3px;">GSV Electrical Enterprises Internship Portal and R&D Department</div>
                 <div style="font-size: 11px; margin-top: 6px; opacity: 0.85;">
-                  📞 9092610415 &nbsp;|&nbsp; ✉️ gsveeip2026@gmail.com &nbsp;|&nbsp; 🌐 gsvee.in
+                  📞 9092610415 &nbsp;|&nbsp; gsveeip2026@gmail.com &nbsp;|&nbsp; gsvee.in
                 </div>
               </div>
 
@@ -23937,11 +23971,19 @@
                   </tr>
                   <tr style="background:#fafafa;">
                     <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Department</td>
-                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${displayDept}</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${deptVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Work Area</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${workAreaVal}</td>
+                  </tr>
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Batch</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${batchValDisp}</td>
                   </tr>
                   <tr>
                     <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Project / Internship Title</td>
-                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${displayProject}</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${skillLearned}</td>
                   </tr>
                   <tr style="background:#fafafa;">
                     <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Internship Period</td>
