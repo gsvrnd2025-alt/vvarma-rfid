@@ -5910,9 +5910,14 @@
                                     <th width="40" class="text-center">
                                         <input type="checkbox" class="form-check-input border-slate-300" id="warnSelectAll" onchange="toggleSelectAllWarnings(this)">
                                     </th>
-                                    <th>Registration ID</th>
                                     <th>Full Name</th>
-                                    <th>Gmail ID</th>
+                                    <th>Reg. No</th>
+                                    <th>Email ID</th>
+                                    <th>College</th>
+                                    <th>Project / Title</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Phone</th>
                                     <th>Batch</th>
                                     <th>Status</th>
                                 </tr>
@@ -5923,15 +5928,83 @@
                         </table>
                     </div>
 
-                    <div class="d-flex justify-content-between align-items-center mt-3">
+                    <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
                         <span id="warnSelectedCount" class="text-muted text-sm font-semibold">0 students selected</span>
-                        <button type="button" class="btn btn-danger px-4 py-2" id="btnSendBatchWarning" onclick="sendBatchWarningNotices()">
-                            <i class="fas fa-paper-plane me-2"></i> Send Official Warning Mail
-                        </button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn px-4 py-2" id="btnPreviewWarning"
+                                style="background: linear-gradient(135deg, #1565c0, #0d47a1); color: white; border: none;"
+                                onclick="previewWarningLetter()" disabled>
+                                <i class="fas fa-eye me-2"></i> Preview Warning Letter
+                            </button>
+                            <button type="button" class="btn btn-danger px-4 py-2" id="btnSendBatchWarning" onclick="sendBatchWarningNotices()">
+                                <i class="fas fa-paper-plane me-2"></i> Send Official Warning Mail
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Warning Letter Preview Modal -->
+        <div id="warnPreviewModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999;
+            background:rgba(0,0,0,0.75); align-items:flex-start; justify-content:center; overflow-y:auto; padding:30px 10px;">
+            <div style="background:#fff; border-radius:12px; width:100%; max-width:860px; margin:auto; box-shadow:0 8px 40px rgba(0,0,0,0.3); overflow:hidden;">
+
+                <!-- Modal Top Bar -->
+                <div style="background: linear-gradient(135deg, #c62828, #b71c1c); color:#fff; padding:14px 24px; display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <span style="font-weight:800; font-size:15px; letter-spacing:0.5px;"><i class="fas fa-file-alt me-2"></i> Warning Notice Preview</span>
+                        <span id="warnPreviewPageIndicator" style="margin-left:14px; font-size:12px; opacity:0.85; background:rgba(255,255,255,0.18); padding:2px 10px; border-radius:20px;"></span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:11px; opacity:0.8; font-style:italic;">Review PDF &amp; Email versions</span>
+                        <button onclick="closeWarnPreviewModal()" style="background:rgba(255,255,255,0.2); border:none; color:#fff; border-radius:6px; padding:5px 14px; font-size:13px; cursor:pointer; font-weight:700;">
+                            <i class="fas fa-times me-1"></i> Close
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div id="warnPreviewPagination" style="display:none; align-items:center; justify-content:center; gap:16px; padding:10px 24px; background:#f8f9fa; border-bottom:1px solid #e0e0e0;">
+                    <button id="warnPreviewPrevBtn" onclick="prevWarnPreviewPage()" style="background:#c62828; color:#fff; border:none; border-radius:6px; padding:5px 18px; cursor:pointer; font-size:13px;" disabled>
+                        <i class="fas fa-chevron-left"></i> Prev
+                    </button>
+                    <span id="warnPreviewPageIndicatorNav" style="font-size:13px; font-weight:600; color:#555;"></span>
+                    <button id="warnPreviewNextBtn" onclick="nextWarnPreviewPage()" style="background:#c62828; color:#fff; border:none; border-radius:6px; padding:5px 18px; cursor:pointer; font-size:13px;">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+
+                <!-- Tabs -->
+                <div style="display:flex; border-bottom:1px solid #ddd; background:#fdfdfd; padding:0 24px;">
+                    <button id="warnTabPdf" class="warn-tab-btn active" onclick="switchWarnPreviewTab('pdf')" style="padding:12px 20px; background:none; border:none; border-bottom:3px solid #c62828; font-weight:700; color:#c62828; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-file-pdf"></i> PDF Preview
+                    </button>
+                    <button id="warnTabEmail" class="warn-tab-btn" onclick="switchWarnPreviewTab('email')" style="padding:12px 20px; background:none; border:none; border-bottom:3px solid transparent; font-weight:600; color:#555; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-envelope"></i> Email Preview
+                    </button>
+                </div>
+
+                <!-- Letter Container -->
+                <div id="warnPreviewLettersContainer" style="padding:28px 24px; background:#f4f4f4; min-height:300px;">
+                    <!-- Letters rendered here -->
+                </div>
+
+                <!-- Modal Footer -->
+                <div style="padding:14px 24px; background:#fff; border-top:1px solid #eee; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <span style="font-size:11px; color:#888; font-style:italic;">
+                        <i class="fas fa-info-circle me-1"></i> PDF will be attached to the warning email and sent to the student(s).
+                    </span>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="closeWarnPreviewModal()" style="background:#6c757d; color:#fff; border:none; border-radius:6px; padding:7px 20px; cursor:pointer; font-size:13px;">
+                            Close Preview
+                        </button>
+                        <button onclick="closeWarnPreviewModal(); sendBatchWarningNotices();"
+                            style="background:linear-gradient(135deg, #c62828, #b71c1c); color:#fff; border:none; border-radius:6px; padding:7px 20px; cursor:pointer; font-size:13px; font-weight:700;">
+                            <i class="fas fa-paper-plane me-1"></i> Confirm & Send Warning
+                        </button>
+                    </div>
+                </div>
 
         <!-- Send Mail Section -->
         <div id="sendMailSection" class="content-section">
@@ -8957,101 +9030,6 @@
             items.forEach(cb => cb.checked = check);
         }
 
-        function handleCreateBatch(e) {
-            if (e) e.preventDefault();
-            const batchName = document.getElementById('batchName').value.trim();
-            const mentorName = document.getElementById('batchMentor').value.trim();
-            const workArea = document.getElementById('batchWorkArea').value;
-            const description = document.getElementById('batchDescription').value.trim();
-
-            if (!batchName) {
-                showAdminFeedback('Batch name is required', 'error');
-                return;
-            }
-
-            showAdminFeedback('Creating batch...', 'info');
-            google.script.run.withSuccessHandler(res => {
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                    closeModal('createBatchModal');
-                    document.getElementById('createBatchForm').reset();
-                    loadBatches();
-                } else {
-                    showAdminFeedback(res.message, 'error');
-                }
-            }).createBatch(batchName, mentorName, workArea, description);
-        }
-
-        async function handleBulkAssignSubmit() {
-            const batchName = document.getElementById('bulkAssignBatchSelect').value;
-            const regIds = JSON.parse(document.getElementById('assignBatchForm').dataset.regIds || '[]');
-
-            if (!batchName) {
-                showAdminFeedback('Please select a batch.', 'warning');
-                return;
-            }
-
-            showAdminFeedback('Processing batch assignment...', 'info');
-            google.script.run
-                .withSuccessHandler(async res => {
-                    if (res.status === 'success') {
-                        showAdminFeedback(res.message, 'success');
-                        closeModal('assignBatchModal');
-                        loadBatches();
-                        loadAllStudentsForManagement();
-                    } else if (res.status === 'confirm_move') {
-                        if (await showConfirmModal(res.message)) {
-                            showAdminFeedback('Moving student(s)...', 'info');
-                            google.script.run
-                                .withSuccessHandler(res2 => {
-                                    if (res2.status === 'success') {
-                                        showAdminFeedback(res2.message, 'success');
-                                        closeModal('assignBatchModal');
-                                        loadBatches();
-                                        loadAllStudentsForManagement();
-                                    } else {
-                                        showAdminFeedback(res2.message, 'error');
-                                    }
-                                })
-                                .withFailureHandler(err => showAdminFeedback('Error: ' + err.message, 'error'))
-                                .assignStudentsToBatch(regIds, batchName, true);
-                        } else {
-                            showAdminFeedback('Assignment cancelled.', 'warning');
-                        }
-                    } else {
-                        showAdminFeedback('Error: ' + res.message, 'error');
-                    }
-                })
-                .assignStudentsToBatch(regIds, batchName, false);
-        }
-
-        function handleChangePasswordSubmit(e) {
-            if (e) e.preventDefault();
-            const currentPass = document.getElementById('currentPassword').value.trim();
-            const newPass = document.getElementById('newPassword').value.trim();
-            const confirmPass = document.getElementById('confirmNewPassword').value.trim();
-
-            if (!currentPass || !newPass || !confirmPass) {
-                showAdminFeedback('All password fields are required', 'error');
-                return;
-            }
-
-            if (newPass !== confirmPass) {
-                showAdminFeedback('New passwords do not match', 'error');
-                return;
-            }
-
-            showAdminFeedback('Changing password...', 'info');
-            google.script.run.withSuccessHandler(res => {
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                    closeModal('changePasswordModal');
-                    document.getElementById('changePasswordForm').reset();
-                } else {
-                    showAdminFeedback(res.message, 'error');
-                }
-            }).changeAdminPassword(currentPass, newPass);
-        }
 
         // --- DATE UTILITIES ---
         function formatDateSafe(dateInput) {
@@ -9329,7 +9307,10 @@
 
         // --- OTHER UTILITIES ---
         function logAdminActivity(details) {
-            google.script.run.logActivity('Admin Dashboard Action', 'Admin', details);
+            console.log(`Admin Activity: ${details}`);
+            if (typeof google !== 'undefined' && google.script && google.script.run && google.script.run.logActivity) {
+                google.script.run.logActivity('Admin Dashboard Action', 'Admin', details);
+            }
         }
 
         // --- BATCH PROJECT & CHAT ---
@@ -9400,400 +9381,6 @@
         // showSuccessToast / showErrorToast moved to line ~12599 to prevent shadowing
 
 
-        function loadAllStudentsForManagement(providedData = null) {
-            const table = document.getElementById('allStudentsTable');
-            if (!table) return;
-            const container = table.querySelector('tbody');
-            if (!container) return;
-
-            if (providedData) {
-                allStudentsData = providedData;
-                renderStudentsTable(providedData, container);
-                return;
-            }
-
-            container.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading students... <i class="fas fa-spinner fa-spin"></i></td></tr>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    allStudentsData = data;
-                    renderStudentsTable(data, container);
-                })
-                .getAllStudents();
-        }
-
-        function renderStudentsTable(data, container) {
-            container.innerHTML = '';
-            if (!data || data.length === 0) {
-                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No students found.</td></tr>';
-                return;
-            }
-
-            // Sort by date descending (newest first)
-            data.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
-
-            data.forEach(s => {
-                const statusClass = (s.status || 'pending').toLowerCase();
-                const tr = document.createElement('tr');
-                tr.dataset.regId = s.registrationId;
-                tr.innerHTML = `
-                    <td class="checkbox-cell"><input type="checkbox" class="form-check-input student-select-checkbox" onchange="updateBulkActionUI('manageStudents')"></td>
-                    <td data-label="Student">
-                        <div class="fw-bold text-primary" style="cursor:pointer;" onclick="openStudentProfileModal('${s.registrationId}')">${s.name}</div>
-                        <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
-                            ${s.registrationId}
-                            ${s.rfidTag ? `<span class="badge" style="background-color: #f3f0ff; color: #5f3dc4; border: 1px dashed #d6bcfa; font-size: 0.65rem; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-id-card"></i> RFID: ${s.rfidTag}</span>` : ''}
-                        </div>
-                    </td>
-                    <td data-label="College"><div class="small">${s.college || 'N/A'}</div></td>
-                    <td data-label="Batch"><span class="badge bg-light text-dark border">${s.batch || 'None'}</span></td>
-                    <td data-label="Status"><span class="status-badge status-${statusClass}">${s.status}</span></td>
-                    <td data-label="Period"><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
-                    <td data-label="Actions" class="text-end">
-                        <div class="btn-group mobile-action-row">
-                            <button class="action-btn btn-view" title="View Profile" onclick="openStudentProfileModal('${s.registrationId}')"><i class="fas fa-user-circle"></i></button>
-                            <button class="action-btn btn-edit" title="Edit Data" onclick="openEditStudentForm('${s.registrationId}')"><i class="fas fa-pencil-alt"></i></button>
-                            <button class="action-btn btn-email" title="Chat" onclick="openAdminChat('${s.registrationId}', '${s.name}')"><i class="fas fa-comments"></i></button>
-                        </div>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-
-        function openEditStudentForm(regId) {
-            const student = allStudentsData.find(s => s.registrationId === regId);
-            if (!student) {
-                showAdminFeedback('Student not found for editing', 'error');
-                return;
-            }
-
-            // Open the profile modal with autoEdit enabled
-            openStudentProfileModal(regId, true);
-        }
-
-        function handleUpdateStudentData(e) {
-            if (e) e.preventDefault();
-            const form = e.target;
-            const regId = form.dataset.regId || window.currentProfileRegId;
-
-            const inputs = form.querySelectorAll('input, select, textarea');
-            const data = { registrationId: regId };
-            inputs.forEach(input => {
-                if (input.name) data[input.name] = input.value;
-            });
-
-            showAdminFeedback('Updating student details...', 'info');
-            google.script.run.withSuccessHandler(res => {
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                    // Reload if in profile modal
-                    if (window.currentProfileRegId === regId) openStudentProfileModal(regId);
-                    loadAllStudentsForManagement();
-                } else {
-                    showAdminFeedback(res.message, 'error');
-                }
-            }).updateStudentProfile(data);
-        }
-
-        function handleSendMailFormSubmit(e) {
-            if (e) e.preventDefault();
-            const regIdEl = document.getElementById('mailRecipientRegId');
-            if (!regIdEl) return;
-            const regId = regIdEl.value.trim();
-            const subject = document.getElementById('mailSubject').value.trim();
-            const body = document.getElementById('mailBody').value.trim();
-
-            if (!regId || !subject || !body) {
-                showAdminFeedback('Recipient, Subject and Body are all required', 'error');
-                return;
-            }
-
-            showAdminFeedback('Sending email...', 'info');
-            google.script.run.withSuccessHandler(res => {
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                    const form = document.getElementById('sendMailForm');
-                    if (form) form.reset();
-                    const nameDisp = document.getElementById('mailRecipientNameDisplay');
-                    if (nameDisp) nameDisp.textContent = '';
-                } else {
-                    showAdminFeedback(res.message, 'error');
-                }
-            }).sendManualEmail(regId, subject, body);
-        }
-
-        // --- NAVIGATION & LOADERS ---
-        function loadBatches() {
-            const container = document.getElementById('batchesList');
-            if (!container) return;
-            container.innerHTML = '<div class="text-center p-4">Loading batches... <i class="fas fa-spinner fa-spin"></i></div>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    window.batchesData = data;
-                    renderBatchesTable(data);
-                })
-                .getBatches();
-        }
-
-        function renderBatchesTable(data) {
-            const container = document.getElementById('batchesList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            if (!data || data.length === 0) {
-                container.innerHTML = '<div class="alert alert-info">No batches found. Create one to get started.</div>';
-                return;
-            }
-
-            data.forEach(batch => {
-                const card = document.createElement('div');
-                card.className = 'batch-card';
-                card.innerHTML = `
-                    <div class="batch-header">
-                        <div class="batch-name">${batch.name}</div>
-                        <div class="batch-meta">${batch.count || 0} Students | Supervisor: ${batch.mentor || 'Unassigned'}</div>
-                    </div>
-                    <div class="batch-actions">
-                        <button class="action-btn btn-view" title="View Members" onclick="openBatchEditModal('${batch.name}')"><i class="fas fa-users"></i></button>
-                        <button class="action-btn btn-edit" title="Edit Projects" onclick="showBatchProjectDetails('${batch.name}')"><i class="fas fa-project-diagram"></i></button>
-                        <button class="action-btn btn-email" title="Batch Chat" onclick="openBatchChat('${batch.name}')"><i class="fas fa-comments"></i></button>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
-        }
-
-        function loadApplications() {
-            const container = document.getElementById('applicationList');
-            if (!container) return;
-            container.innerHTML = '<tr><td colspan="7" class="text-center p-4">Loading applications... <i class="fas fa-spinner fa-spin"></i></td></tr>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    applicationsData = data;
-                    renderApplicationsTable(data);
-                })
-                .getApplications();
-        }
-
-        function renderApplicationsTable(data) {
-            const container = document.getElementById('applicationList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            const pendingApps = data.filter(a => a.status === 'Pending');
-            if (pendingApps.length === 0) {
-                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No pending applications.</td></tr>';
-                return;
-            }
-
-            // Sort by date descending (newest first)
-            pendingApps.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
-
-            pendingApps.forEach(s => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>
-                        <div class="fw-bold">${s.name}</div>
-                        <div class="small text-muted">${s.registrationId}</div>
-                    </td>
-                    <td><div class="small">${s.college || 'N/A'}</div></td>
-                    <td><div class="small">${s.department || 'N/A'}</div></td>
-                    <td><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
-                    <td><div class="small">${s.durationDays || 0} Days</div></td>
-                    <td class="text-end">
-                        <button class="action-btn btn-approve" title="Approve" onclick="processApplication('${s.registrationId}', 'Approved')"><i class="fas fa-check"></i></button>
-                        <button class="action-btn btn-reject" title="Reject" onclick="processApplication('${s.registrationId}', 'Rejected')"><i class="fas fa-times"></i></button>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-
-        function processApplication(regId, action) {
-            confirmAction(`${action} Application?`, `Are you sure you want to ${action.toLowerCase()} this application?`, `Yes, ${action}`, 'question', action === 'Approved' ? '#28a745' : '#dc3545').then((result) => {
-                if (result.isConfirmed) {
-                    showAdminFeedback(`Processing ${action.toLowerCase()}...`, 'info');
-                    google.script.run.withSuccessHandler(res => {
-                        if (res.status === 'success') {
-                            showAdminFeedback(res.message, 'success');
-                            loadApplications();
-                            loadDashboardStats();
-                        } else {
-                            showAdminFeedback(res.message, 'error');
-                        }
-                    }).updateApplicationStatus(regId, action);
-                }
-            });
-        }
-
-        function openBatchEditModal(batchName) {
-            currentEditingBatch = batchName;
-            const titleEl = document.getElementById('editBatchTitle');
-            if (titleEl) titleEl.textContent = `Manage Members: ${batchName}`;
-            loadBatchMembers(batchName);
-            openModal('editBatchModal');
-        }
-
-        function loadBatchMembers(batchName) {
-            const container = document.getElementById('batchMembersList');
-            if (!container) return;
-            container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading members...</td></tr>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    renderBatchMembers(data, batchName);
-                })
-                .getBatchMembers(batchName);
-        }
-
-        function renderBatchMembers(members, batchName) {
-            const container = document.getElementById('batchMembersList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            if (!members || members.length === 0) {
-                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No students in this batch.</td></tr>';
-                return;
-            }
-
-            members.forEach(m => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>
-                        <div class="fw-bold">${m.name}</div>
-                        <div class="small text-muted">${m.registrationId}</div>
-                    </td>
-                    <td><div class="small">${m.college || 'N/A'}</div></td>
-                    <td><span class="status-badge status-${(m.status || '').toLowerCase()}">${m.status}</span></td>
-                    <td class="text-end">
-                        <button class="action-btn btn-reject" title="Remove from Batch" onclick="removeStudentFromBatch('${m.registrationId}', '${batchName}')"><i class="fas fa-user-minus"></i></button>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-
-        function removeStudentFromBatch(regId, batchName) {
-            confirmAction('Remove Student?', `Remove student ${regId} from ${batchName}?`, 'Yes, remove').then((result) => {
-                if (result.isConfirmed) {
-                    showAdminFeedback('Removing student...', 'info');
-                    google.script.run.withSuccessHandler(res => {
-                        if (res.status === 'success') {
-                            showAdminFeedback(res.message, 'success');
-                            loadBatchMembers(batchName);
-                            loadBatches(); // Update counts
-                        } else {
-                            showAdminFeedback(res.message, 'error');
-                        }
-                    }).removeStudentsFromBatch([regId], batchName);
-                }
-            });
-        }
-
-        function addStudentToBatchManual() {
-            const regIdEl = document.getElementById('newBatchMemberRegId');
-            if (!regIdEl) return;
-            const regId = regIdEl.value.trim();
-            if (!regId) return;
-
-            showAdminFeedback('Adding student...', 'info');
-            google.script.run.withSuccessHandler(res => {
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                    regIdEl.value = '';
-                    loadBatchMembers(currentEditingBatch);
-                    loadBatches();
-                } else {
-                    showAdminFeedback(res.message, 'error');
-                }
-            }).assignStudentsToBatch([regId], currentEditingBatch);
-        }
-
-        // Redundant loadRfidInventory removed. Superseded by loadRfidManagement() at line 16648.
-
-        // makeDraggable defined later in file with button-click guards\n
-        function formatTime(timeStr) {
-            if (!timeStr) return '--:--';
-            if (timeStr instanceof Date) {
-                return timeStr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            }
-            return timeStr;
-        }
-
-        function loadDashboardStats() {
-            const container = document.getElementById('dashboardStats');
-            if (container) container.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
-
-            google.script.run
-                .withSuccessHandler(data => {
-                    renderDashboardStats(data, container);
-                })
-                .getDashboardStats();
-        }
-
-
-
-        function loadRecentActivity() {
-            const container = document.getElementById('recentActivityList');
-            if (container) container.innerHTML = '<div class="text-center p-3 text-muted small">Loading activity...</div>';
-
-            google.script.run
-                .withSuccessHandler(activities => {
-                    if (container) {
-                        if (activities && activities.length > 0) {
-                            container.innerHTML = activities.slice(0, 10).map(a => `
-                                <div class="activity-item py-2 border-bottom">
-                                    <div class="small fw-bold">${a.action || 'Action'}</div>
-                                    <div class="small text-muted">${a.details || ''} - ${formatDetailedDate(a.timestamp)}</div>
-                                </div>
-                            `).join('');
-                        } else {
-                            container.innerHTML = '<div class="text-center p-3 text-muted small">No recent activity</div>';
-                        }
-                    }
-                })
-                .getRecentActivity();
-        }
-
-        function loadAdminFiles() {
-            const container = document.getElementById('adminFileList');
-            if (container) container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading files...</td></tr>';
-
-            google.script.run
-                .withSuccessHandler(files => {
-                    renderAdminFiles(files);
-                })
-                .getAdminFiles();
-        }
-
-        function renderAdminFiles(files) {
-            const container = document.getElementById('adminFileList');
-            if (!container) return;
-            container.innerHTML = '';
-
-            if (!files || files.length === 0) {
-                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No files found.</td></tr>';
-                return;
-            }
-
-            files.forEach(f => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td><div class="fw-bold"><i class="fas fa-file-alt me-2"></i> ${f.name}</div></td>
-                    <td><div class="small text-muted">${f.type || 'File'}</div></td>
-                    <td><div class="small">${formatDateSafe(f.date)}</div></td>
-                    <td class="text-end">
-                        <a href="${f.url}" target="_blank" class="action-btn btn-view"><i class="fas fa-eye"></i></a>
-                        <button class="action-btn btn-reject" onclick="deleteAdminFile('${f.id}')"><i class="fas fa-trash"></i></button>
-                    </td>
-                `;
-                container.appendChild(tr);
-            });
-        }
-
         function loadDashboardAttendanceWidget() {
             const container = document.getElementById('attendanceOverviewList');
             if (container) container.innerHTML = '<tr><td colspan="6" class="text-center p-3">Loading overview...</td></tr>';
@@ -9835,37 +9422,6 @@
 
 
 
-        function renderDashboardStats(data, container) {
-            if (!container) return;
-
-            const stats = data || {};
-            container.innerHTML = `
-                <div class="col-md-3">
-                    <div class="stat-card bg-primary text-white p-3 rounded-3 shadow-sm">
-                        <div class="stat-label opacity-75 small">Total Students</div>
-                        <div class="stat-value h4 mb-0 fw-bold">${stats.totalStudents || 0}</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card bg-success text-white p-3 rounded-3 shadow-sm">
-                        <div class="stat-label opacity-75 small">Active Interns</div>
-                        <div class="stat-value h4 mb-0 fw-bold">${stats.activeInterns || 0}</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card bg-warning text-dark p-3 rounded-3 shadow-sm">
-                        <div class="stat-label opacity-75 small">Pending Applications</div>
-                        <div class="stat-value h4 mb-0 fw-bold">${stats.pendingApplications || 0}</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card bg-info text-white p-3 rounded-3 shadow-sm">
-                        <div class="stat-label opacity-75 small">Present Today</div>
-                        <div class="stat-value h4 mb-0 fw-bold">${stats.presentToday || 0}</div>
-                    </div>
-                </div>
-            `;
-        }
 
         // Pre-create debounced function for attendance filter
         const debouncedLoadAttendance = (function () {
@@ -9943,10 +9499,6 @@
             // Dashboard Default
             showSection('dashboard', document.querySelector('.sidebar-nav a[onclick*="dashboard"]'), true, false);
 
-            // Pre-fetch Management Data
-            loadAllStudentsForManagement();
-            loadBatches();
-            populateBatchDropdowns();
 
             // Setup Form Handlers
             setupFormEventListeners();
@@ -13945,38 +13497,6 @@
             table.style.display = '';
         }
 
-        function toggleRowDropdown(btn) {
-            const dropdown = btn.nextElementSibling;
-            const isVisible = dropdown.style.display === 'block';
-
-            // Close all other dropdowns
-            document.querySelectorAll('.dropdown-menu-row').forEach(d => d.style.display = 'none');
-
-            if (!isVisible) {
-                dropdown.style.display = 'block';
-
-                // Smart Positioning: Prevent vertical clipping at the bottom of the viewport/container
-                const rect = dropdown.getBoundingClientRect();
-                const vh = window.innerHeight || document.documentElement.clientHeight;
-
-                if (rect.bottom > vh - 20) {
-                    // If it would overflow the bottom, flip it to show above the button
-                    dropdown.style.top = 'auto';
-                    dropdown.style.bottom = '100%';
-                    dropdown.style.marginTop = '0';
-                    dropdown.style.marginBottom = '8px';
-                    dropdown.style.transformOrigin = 'bottom right';
-                } else {
-                    // Default: show below the button
-                    dropdown.style.top = '100%';
-                    dropdown.style.bottom = 'auto';
-                    dropdown.style.marginTop = '8px';
-                    dropdown.style.marginBottom = '0';
-                    dropdown.style.transformOrigin = 'top right';
-                }
-            }
-        }
-
         let allAdminFilesData = [];
         let currentFileTypeFilter = 'All';
         const FOLDERS_PAGE_SIZE = 12;
@@ -14739,18 +14259,37 @@
             });
 
             const isVisible = menu.style.display === 'block';
-            menu.style.display = isVisible ? 'none' : 'block';
+            const show = !isVisible;
+            menu.style.display = show ? 'block' : 'none';
 
-            // Close on click outside
-            if (menu.style.display === 'block') {
+            if (show) {
+                // Smart Positioning: Prevent vertical clipping at the bottom of the viewport/container
+                const rect = menu.getBoundingClientRect();
+                const vh = window.innerHeight || document.documentElement.clientHeight;
+
+                if (rect.bottom > vh - 20) {
+                    // If it would overflow the bottom, flip it to show above the button
+                    menu.style.top = 'auto';
+                    menu.style.bottom = '100%';
+                    menu.style.marginTop = '0';
+                    menu.style.marginBottom = '8px';
+                    menu.style.transformOrigin = 'bottom right';
+                } else {
+                    // Default: show below the button
+                    menu.style.top = '100%';
+                    menu.style.bottom = 'auto';
+                    menu.style.marginTop = '8px';
+                    menu.style.marginBottom = '0';
+                    menu.style.transformOrigin = 'top right';
+                }
+
+                // Close on click outside
                 const closeHandler = (e) => {
-                    // Check if click is outside the menu AND outside the toggle button
                     if (!menu.contains(e.target) && !btn.contains(e.target)) {
                         menu.style.display = 'none';
                         document.removeEventListener('click', closeHandler);
                     }
                 };
-                // Delay listener attachment to avoid immediate trigger from current click
                 setTimeout(() => {
                     document.addEventListener('click', closeHandler);
                 }, 100);
@@ -15772,10 +15311,6 @@
                 .processUnifiedAdminRequestsBatch(requestsList, action);
         }
 
-        function logAdminActivity(activity) {
-            // In a real implementation, this would log to the server
-            console.log(`Admin Activity: ${activity}`);
-        }
 
         // Attendance mode state
         let currentAttendanceMode = 'all';
@@ -15829,25 +15364,6 @@
         let allStudentsDataCache = null;
         let attendanceSearchTimer = null;
 
-        function formatDateISO(date) {
-            if (!date) return '';
-            const d = new Date(date);
-            if (isNaN(d.getTime())) {
-                // Try parsing DD/MM/YYYY
-                if (typeof date === 'string' && date.includes('/')) {
-                    const parts = date.split('/');
-                    if (parts.length === 3) {
-                        const day = parseInt(parts[0]);
-                        const month = parseInt(parts[1]) - 1;
-                        const year = parseInt(parts[2]);
-                        const d2 = new Date(year, month, day);
-                        if (!isNaN(d2.getTime())) return d2.getFullYear() + '-' + String(d2.getMonth() + 1).padStart(2, '0') + '-' + String(d2.getDate()).padStart(2, '0');
-                    }
-                }
-                return '';
-            }
-            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        }
 
         function handleAttendanceGlobalSearch(val) {
             const suggestions = document.getElementById('attendanceSuggestions');
@@ -20610,19 +20126,6 @@
         }
         setInterval(initUniversalSmartSearch, 2000);
 
-        function pingRfidDevice(mac, btn = null) {
-            if (btn) btn.disabled = true;
-            showAdminFeedback(`Pinging device ${mac}...`, 'info');
-
-            google.script.run.withSuccessHandler(res => {
-                if (btn) btn.disabled = false;
-                if (res.status === 'success') {
-                    showAdminFeedback(res.message, 'success');
-                } else {
-                    showAdminFeedback('Error: ' + res.message, 'error');
-                }
-            }).setRfidDeviceCommand(mac, 'PING');
-        }
 
         function triggerRemoteCapture(mac = 'ALL', btn = null) {
             if (btn) btn.disabled = true;
@@ -20716,7 +20219,200 @@
                 }, 5000);
             }).pingRfidHardware(mac);
         }
-    </script>
+
+        // --- NEW: handleBulkAssignSubmit ---
+        async function handleBulkAssignSubmit() {
+            const batchName = document.getElementById('bulkAssignBatchSelect').value;
+            const regIds = JSON.parse(document.getElementById('assignBatchForm').dataset.regIds || '[]');
+
+            if (!batchName) {
+                showAdminFeedback('Please select a batch.', 'warning');
+                return;
+            }
+
+            showAdminFeedback('Processing batch assignment...', 'info');
+            google.script.run
+                .withSuccessHandler(async res => {
+                    if (res.status === 'success') {
+                        showAdminFeedback(res.message, 'success');
+                        closeModal('assignBatchModal');
+                        loadBatches();
+                        loadAllStudentsForManagement();
+                    } else if (res.status === 'confirm_move') {
+                        if (await showConfirmModal(res.message)) {
+                            showAdminFeedback('Moving student(s)...', 'info');
+                            google.script.run
+                                .withSuccessHandler(res2 => {
+                                    if (res2.status === 'success') {
+                                        showAdminFeedback(res2.message, 'success');
+                                        closeModal('assignBatchModal');
+                                        loadBatches();
+                                        loadAllStudentsForManagement();
+                                    } else {
+                                        showAdminFeedback(res2.message, 'error');
+                                    }
+                                })
+                                .withFailureHandler(err => showAdminFeedback('Error: ' + err.message, 'error'))
+                                .assignStudentsToBatch(regIds, batchName, true);
+                        } else {
+                            showAdminFeedback('Assignment cancelled.', 'warning');
+                        }
+                    } else {
+                        showAdminFeedback('Error: ' + res.message, 'error');
+                    }
+                })
+                .assignStudentsToBatch(regIds, batchName, false);
+        }
+
+        // --- NEW: renderStudentsTable ---
+        function renderStudentsTable(data, container) {
+            container.innerHTML = '';
+            if (!data || data.length === 0) {
+                container.innerHTML = '<tr><td colspan="7" class="text-center p-4 text-muted">No students found.</td></tr>';
+                return;
+            }
+
+            // Sort by date descending (newest first)
+            data.sort((a, b) => new Date(b.InternshipStartDate || b.appliedDate || 0) - new Date(a.InternshipStartDate || a.appliedDate || 0));
+
+            data.forEach(s => {
+                const statusClass = (s.status || 'pending').toLowerCase();
+                const tr = document.createElement('tr');
+                tr.dataset.regId = s.registrationId;
+                tr.innerHTML = `
+                    <td class="checkbox-cell"><input type="checkbox" class="form-check-input student-select-checkbox" onchange="updateBulkActionUI('manageStudents')"></td>
+                    <td data-label="Student">
+                        <div class="fw-bold text-primary" style="cursor:pointer;" onclick="openStudentProfileModal('${s.registrationId}')">${s.name}</div>
+                        <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+                            ${s.registrationId}
+                            ${s.rfidTag ? `<span class="badge" style="background-color: #f3f0ff; color: #5f3dc4; border: 1px dashed #d6bcfa; font-size: 0.65rem; padding: 2px 6px; display: inline-flex; align-items: center; gap: 3px;"><i class="fas fa-id-card"></i> RFID: ${s.rfidTag}</span>` : ''}
+                        </div>
+                    </td>
+                    <td data-label="College"><div class="small">${s.college || 'N/A'}</div></td>
+                    <td data-label="Batch"><span class="badge bg-light text-dark border">${s.batch || 'None'}</span></td>
+                    <td data-label="Status"><span class="status-badge status-${statusClass}">${s.status}</span></td>
+                    <td data-label="Period"><div class="small">${formatDateSafe(s.InternshipStartDate)}</div></td>
+                    <td data-label="Actions" class="text-end">
+                        <div class="btn-group mobile-action-row">
+                            <button class="action-btn btn-view" title="View Profile" onclick="openStudentProfileModal('${s.registrationId}')"><i class="fas fa-user-circle"></i></button>
+                            <button class="action-btn btn-edit" title="Edit Data" onclick="openEditStudentForm('${s.registrationId}')"><i class="fas fa-pencil-alt"></i></button>
+                            <button class="action-btn btn-email" title="Chat" onclick="openAdminChat('${s.registrationId}', '${s.name}')"><i class="fas fa-comments"></i></button>
+                        </div>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+
+        // --- NEW: openEditStudentForm ---
+        function openEditStudentForm(regId) {
+            const student = allStudentsData.find(s => s.registrationId === regId);
+            if (!student) {
+                showAdminFeedback('Student not found for editing', 'error');
+                return;
+            }
+
+            // Open the profile modal with autoEdit enabled
+            openStudentProfileModal(regId, true);
+        }
+
+        // --- NEW: renderBatchesTable ---
+        function renderBatchesTable(data) {
+            const container = document.getElementById('batchesList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                container.innerHTML = '<div class="alert alert-info">No batches found. Create one to get started.</div>';
+                return;
+            }
+
+            data.forEach(batch => {
+                const card = document.createElement('div');
+                card.className = 'batch-card';
+                card.innerHTML = `
+                    <div class="batch-header">
+                        <div class="batch-name">${batch.name}</div>
+                        <div class="batch-meta">${batch.count || 0} Students | Supervisor: ${batch.mentor || 'Unassigned'}</div>
+                    </div>
+                    <div class="batch-actions">
+                        <button class="action-btn btn-view" title="View Members" onclick="openBatchEditModal('${batch.name}')"><i class="fas fa-users"></i></button>
+                        <button class="action-btn btn-edit" title="Edit Projects" onclick="showBatchProjectDetails('${batch.name}')"><i class="fas fa-project-diagram"></i></button>
+                        <button class="action-btn btn-email" title="Batch Chat" onclick="openBatchChat('${batch.name}')"><i class="fas fa-comments"></i></button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // --- NEW: processApplication ---
+        function processApplication(regId, action) {
+            confirmAction(`${action} Application?`, `Are you sure you want to ${action.toLowerCase()} this application?`, `Yes, ${action}`, 'question', action === 'Approved' ? '#28a745' : '#dc3545').then((result) => {
+                if (result.isConfirmed) {
+                    showAdminFeedback(`Processing ${action.toLowerCase()}...`, 'info');
+                    google.script.run.withSuccessHandler(res => {
+                        if (res.status === 'success') {
+                            showAdminFeedback(res.message, 'success');
+                            loadApplications();
+                            loadDashboardStats();
+                        } else {
+                            showAdminFeedback(res.message, 'error');
+                        }
+                    }).updateApplicationStatus(regId, action);
+                }
+            });
+        }
+
+        // --- NEW: openBatchEditModal ---
+        function openBatchEditModal(batchName) {
+            currentEditingBatch = batchName;
+            const titleEl = document.getElementById('editBatchTitle');
+            if (titleEl) titleEl.textContent = `Manage Members: ${batchName}`;
+            loadBatchMembers(batchName);
+            openModal('editBatchModal');
+        }
+
+        // --- NEW: loadBatchMembers ---
+        function loadBatchMembers(batchName) {
+            const container = document.getElementById('batchMembersList');
+            if (!container) return;
+            container.innerHTML = '<tr><td colspan="4" class="text-center p-3">Loading members...</td></tr>';
+
+            google.script.run
+                .withSuccessHandler(data => {
+                    renderBatchMembers(data, batchName);
+                })
+                .getBatchMembers(batchName);
+        }
+
+        // --- NEW: renderBatchMembers ---
+        function renderBatchMembers(members, batchName) {
+            const container = document.getElementById('batchMembersList');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (!members || members.length === 0) {
+                container.innerHTML = '<tr><td colspan="4" class="text-center p-3 text-muted">No students in this batch.</td></tr>';
+                return;
+            }
+
+            members.forEach(m => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>
+                        <div class="fw-bold">${m.name}</div>
+                        <div class="small text-muted">${m.registrationId}</div>
+                    </td>
+                    <td><div class="small">${m.college || 'N/A'}</div></td>
+                    <td><span class="status-badge status-${(m.status || '').toLowerCase()}">${m.status}</span></td>
+                    <td class="text-end">
+                        <button class="action-btn btn-reject" title="Remove from Batch" onclick="removeStudentFromBatch('${m.registrationId}', '${batchName}')"><i class="fas fa-user-minus"></i></button>
+                    </td>
+                `;
+                container.appendChild(tr);
+            });
+        }
+</script>
 
     <!-- Ping Details Modal -->
     <div class="modal fade" id="pingDetailsModal" tabindex="-1" aria-hidden="true">
@@ -23356,6 +23052,12 @@
             });
         }
 
+        // ─── Warning Letter Preview state variables ───
+        let activeWarnPreviewStudents = [];
+        let activeWarnPreviewReason = '';
+        let currentWarnPreviewTab = 'pdf';
+        let currentWarnPreviewPage = 1;
+
         function filterWarningStudents() {
             const tableBody = document.getElementById('warnStudentTableBody');
             if (!tableBody) return;
@@ -23364,16 +23066,24 @@
             const searchKey = document.getElementById('warnSearchKey').value.toLowerCase().trim();
 
             const filtered = allStudentsData.filter(s => {
-                const matchesBatch = !selectedBatch || s.Batch === selectedBatch;
+                const batchVal = s.batch || s.Batch || '';
+                const matchesBatch = !selectedBatch || batchVal === selectedBatch;
                 
-                const fullName = ((s.FirstName || '') + ' ' + (s.MiddleName || '') + ' ' + (s.LastName || '')).toLowerCase();
-                const regId = String(s.RegistrationID || '').toLowerCase();
-                const email = String(s.GmailID || '').toLowerCase();
+                const fName = s.firstName || s.FirstName || '';
+                const mName = s.middleName || s.MiddleName || '';
+                const lName = s.lastName || s.LastName || '';
+                const fullName = (s.name || (fName + ' ' + mName + ' ' + lName)).toLowerCase();
+                const regId = String(s.registrationId || s.RegistrationID || '').toLowerCase();
+                const email = String(s.gmail || s.GmailID || '').toLowerCase();
+                const college = String(s.college || s.collegeName || s.CollegeName || '').toLowerCase();
+                const phone = String(s.mobile || s.mobileNumber || s.MobileNumber || '').toLowerCase();
                 
                 const matchesSearch = !searchKey || 
                     fullName.includes(searchKey) || 
                     regId.includes(searchKey) || 
-                    email.includes(searchKey);
+                    email.includes(searchKey) ||
+                    college.includes(searchKey) ||
+                    phone.includes(searchKey);
 
                 return matchesBatch && matchesSearch;
             });
@@ -23381,7 +23091,7 @@
             tableBody.innerHTML = '';
             
             if (filtered.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-muted">No students found matching filters.</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="11" class="text-center p-4 text-muted">No students found matching filters.</td></tr>';
                 updateWarnSelectedCount();
                 return;
             }
@@ -23389,44 +23099,92 @@
             filtered.forEach(s => {
                 const tr = document.createElement('tr');
                 
+                // Checkbox
                 const tdCheck = document.createElement('td');
                 tdCheck.className = 'text-center';
                 const chk = document.createElement('input');
                 chk.type = 'checkbox';
                 chk.className = 'form-check-input warn-student-checkbox border-slate-300';
-                chk.value = s.RegistrationID;
+                chk.value = s.registrationId || s.RegistrationID;
                 chk.onchange = updateWarnSelectedCount;
                 tdCheck.appendChild(chk);
                 tr.appendChild(tdCheck);
 
-                const tdId = document.createElement('td');
-                tdId.className = 'font-semibold';
-                tdId.textContent = s.RegistrationID;
-                tr.appendChild(tdId);
-
+                // Full Name
+                const fName = s.firstName || s.FirstName || '';
+                const mName = s.middleName || s.MiddleName || '';
+                const lName = s.lastName || s.LastName || '';
+                const fullName = s.name || (fName + ' ' + mName + ' ' + lName).trim() || 'N/A';
                 const tdName = document.createElement('td');
-                tdName.textContent = (s.FirstName || '') + ' ' + (s.MiddleName || '') + ' ' + (s.LastName || '');
+                tdName.className = 'font-semibold text-nowrap';
+                tdName.textContent = fullName;
                 tr.appendChild(tdName);
 
+                // Registration ID
+                const tdId = document.createElement('td');
+                tdId.innerHTML = `<code class="text-xs bg-slate-100 px-1 rounded">${s.registrationId || s.RegistrationID || 'N/A'}</code>`;
+                tr.appendChild(tdId);
+
+                // Email
                 const tdEmail = document.createElement('td');
-                tdEmail.textContent = s.GmailID || 'N/A';
+                tdEmail.className = 'text-xs';
+                tdEmail.textContent = s.gmail || s.GmailID || 'N/A';
                 tr.appendChild(tdEmail);
 
+                // College
+                const tdCollege = document.createElement('td');
+                tdCollege.className = 'text-xs text-nowrap';
+                tdCollege.textContent = s.college || s.collegeName || s.CollegeName || 'N/A';
+                tr.appendChild(tdCollege);
+
+                // Project / Internship Title
+                const tdProject = document.createElement('td');
+                tdProject.className = 'text-xs';
+                tdProject.textContent = s.interestedArea || s.InterestedArea || s.department || s.Department || 'N/A';
+                tr.appendChild(tdProject);
+
+                // Start Date
+                const tdStart = document.createElement('td');
+                tdStart.className = 'text-xs text-nowrap';
+                const startRaw = s.internshipStartDate || s.InternshipStartDate;
+                tdStart.textContent = startRaw ? new Date(startRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : 'N/A';
+                tr.appendChild(tdStart);
+
+                // End Date
+                const tdEnd = document.createElement('td');
+                tdEnd.className = 'text-xs text-nowrap';
+                const endRaw = s.internshipEndDate || s.InternshipEndDate;
+                tdEnd.textContent = endRaw ? new Date(endRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : 'N/A';
+                tr.appendChild(tdEnd);
+
+                // Phone
+                const tdPhone = document.createElement('td');
+                tdPhone.className = 'text-xs';
+                tdPhone.textContent = s.mobile || s.mobileNumber || s.MobileNumber || 'N/A';
+                tr.appendChild(tdPhone);
+
+                // Batch
                 const tdBatch = document.createElement('td');
-                tdBatch.textContent = s.Batch || 'N/A';
+                tdBatch.className = 'text-xs';
+                tdBatch.textContent = s.batch || s.Batch || 'N/A';
                 tr.appendChild(tdBatch);
 
+                // Status
                 const tdStatus = document.createElement('td');
                 const badge = document.createElement('span');
-                const statusStr = String(s.ApplicationStatus || s.Status || 'Active').toLowerCase();
+                const statusStr = String(s.applicationStatus || s.status || s.ApplicationStatus || s.Status || 'Active').toLowerCase();
                 if (statusStr.includes('complete')) {
                     badge.className = 'badge bg-success';
                 } else if (statusStr.includes('reject') || statusStr.includes('terminate')) {
                     badge.className = 'badge bg-danger';
+                } else if (statusStr.includes('approved') || statusStr.includes('active')) {
+                    badge.className = 'badge bg-primary';
+                } else if (statusStr.includes('assign')) {
+                    badge.className = 'badge bg-warning text-dark';
                 } else {
                     badge.className = 'badge bg-info text-dark';
                 }
-                badge.textContent = s.ApplicationStatus || s.Status || 'Active';
+                badge.textContent = s.applicationStatus || s.status || s.ApplicationStatus || s.Status || 'Active';
                 tdStatus.appendChild(badge);
                 tr.appendChild(tdStatus);
 
@@ -23453,6 +23211,390 @@
             if (countEl) {
                 countEl.textContent = `${checked} student(s) selected`;
             }
+            const previewBtn = document.getElementById('btnPreviewWarning');
+            if (previewBtn) {
+                previewBtn.disabled = checked === 0;
+            }
+        }
+
+        function previewWarningLetter() {
+            const checkedBoxes = document.querySelectorAll('.warn-student-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                showAdminFeedback('Please select at least one student to preview.', 'warning');
+                return;
+            }
+
+            const customReason = document.getElementById('warnCustomReason').value.trim();
+            const regIds = Array.from(checkedBoxes).map(chk => chk.value);
+
+            // Find student objects
+            const students = regIds.map(rid => allStudentsData.find(s =>
+                (s.registrationId || s.RegistrationID) === rid
+            )).filter(Boolean);
+
+            if (students.length === 0) {
+                showAdminFeedback('Could not find student data for preview.', 'error');
+                return;
+            }
+
+            activeWarnPreviewStudents = students;
+            activeWarnPreviewReason = customReason;
+            currentWarnPreviewTab = 'pdf';
+            currentWarnPreviewPage = 1;
+
+            const modal = document.getElementById('warnPreviewModal');
+            if (!modal) return;
+
+            renderWarningPreviews();
+
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function renderWarningPreviews() {
+            const container = document.getElementById('warnPreviewLettersContainer');
+            const pageIndicator = document.getElementById('warnPreviewPageIndicator');
+            const pageIndicatorNav = document.getElementById('warnPreviewPageIndicatorNav');
+            if (!container) return;
+
+            // Update tab styles
+            const tabPdf = document.getElementById('warnTabPdf');
+            const tabEmail = document.getElementById('warnTabEmail');
+            if (tabPdf && tabEmail) {
+                if (currentWarnPreviewTab === 'pdf') {
+                    tabPdf.style.borderBottom = '3px solid #c62828';
+                    tabPdf.style.color = '#c62828';
+                    tabPdf.style.fontWeight = '700';
+                    tabEmail.style.borderBottom = '3px solid transparent';
+                    tabEmail.style.color = '#555';
+                    tabEmail.style.fontWeight = '600';
+                } else {
+                    tabEmail.style.borderBottom = '3px solid #c62828';
+                    tabEmail.style.color = '#c62828';
+                    tabEmail.style.fontWeight = '700';
+                    tabPdf.style.borderBottom = '3px solid transparent';
+                    tabPdf.style.color = '#555';
+                    tabPdf.style.fontWeight = '600';
+                }
+            }
+
+            container.innerHTML = '';
+            const totalPages = activeWarnPreviewStudents.length;
+
+            activeWarnPreviewStudents.forEach((s, idx) => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'warn-letter-page';
+                wrapper.setAttribute('data-page', idx + 1);
+                
+                // Show/hide based on pagination page
+                if (idx + 1 !== currentWarnPreviewPage) {
+                    wrapper.style.display = 'none';
+                } else {
+                    wrapper.style.display = 'block';
+                }
+
+                const contentHtml = currentWarnPreviewTab === 'pdf'
+                    ? buildWarningLetterHTML(s, activeWarnPreviewReason)
+                    : buildWarningEmailHTML(s, activeWarnPreviewReason);
+                
+                wrapper.innerHTML = contentHtml;
+                container.appendChild(wrapper);
+            });
+
+            if (pageIndicator) {
+                pageIndicator.textContent = totalPages > 1 ? `Letter ${currentWarnPreviewPage} of ${totalPages}` : '';
+            }
+            if (pageIndicatorNav) {
+                pageIndicatorNav.textContent = `Letter ${currentWarnPreviewPage} of ${totalPages}`;
+            }
+
+            // Setup pagination button states
+            const prevBtn = document.getElementById('warnPreviewPrevBtn');
+            const nextBtn = document.getElementById('warnPreviewNextBtn');
+            if (prevBtn) prevBtn.disabled = currentWarnPreviewPage <= 1;
+            if (nextBtn) nextBtn.disabled = currentWarnPreviewPage >= totalPages;
+
+            // Show pagination controls only if multiple students
+            const paginationEl = document.getElementById('warnPreviewPagination');
+            if (paginationEl) {
+                paginationEl.style.display = totalPages > 1 ? 'flex' : 'none';
+            }
+        }
+
+        function switchWarnPreviewTab(tab) {
+            currentWarnPreviewTab = tab;
+            renderWarningPreviews();
+        }
+
+        function prevWarnPreviewPage() {
+            if (currentWarnPreviewPage > 1) {
+                currentWarnPreviewPage--;
+                renderWarningPreviews();
+            }
+        }
+
+        function nextWarnPreviewPage() {
+            if (currentWarnPreviewPage < activeWarnPreviewStudents.length) {
+                currentWarnPreviewPage++;
+                renderWarningPreviews();
+            }
+        }
+
+        function closeWarnPreviewModal() {
+            const modal = document.getElementById('warnPreviewModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function buildWarningLetterHTML(s, customReason) {
+            const fName = s.firstName || s.FirstName || '';
+            const mName = s.middleName || s.MiddleName || '';
+            const lName = s.lastName || s.LastName || '';
+            const fullName = s.name || (fName + ' ' + mName + ' ' + lName).trim() || 'N/A';
+            const regId = s.registrationId || s.RegistrationID || 'N/A';
+            const email = s.gmail || s.GmailID || 'N/A';
+            const college = s.college || s.collegeName || s.CollegeName || 'N/A';
+            const phone = s.mobile || s.mobileNumber || s.MobileNumber || 'N/A';
+            const regNo = s.registerNumber || s.RegisterNumber || 'N/A';
+            
+            const displayDept = `GSV / ${s.department || s.Department || 'N/A'} / ${s.projectName || s.interestedArea || s.InterestedArea || 'N/A'}`;
+            const displayProject = s.batch || s.Batch || 'N/A';
+
+            const startRaw = s.internshipStartDate || s.InternshipStartDate;
+            const endRaw = s.internshipEndDate || s.InternshipEndDate;
+            const startDate = startRaw ? new Date(startRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'}) : 'N/A';
+            const endDate = endRaw ? new Date(endRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'}) : 'N/A';
+            const todayStr = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+            const wrnRef = `WRN-${regId}-${new Date().getFullYear()}`;
+
+            const warningBody = `We are writing to officially issue a warning notice regarding your internship performance at GSV Electrical Enterprises. It has been observed that you are delaying the completion of your assigned project/task. You have not completed it yet, and there is a significant delay on your part, past the project submission period.
+
+            Please note that the terms and conditions of this internship have already been communicated to you, and all necessary support has been provided. Even if your college reopens, you must obtain On-Duty (OD) permission from your college or coordinate with us to complete and submit your project. Completing and delivering your project is strictly mandatory. Furthermore, even if your project timeline or scheduled duration has expired, you must obtain permission for an extension and ensure that the project is completed and delivered from your side.` +
+                (customReason ? `\n\nSpecific Details: ${customReason}` : '') +
+                `\n\nPlease be informed that if you continue to delay project submission, or if you take continuous leave for 3 or more days without prior permission, or engage in any indisciplinary activities, we will be constrained to terminate you from this internship program immediately.\n\nIn the event of termination:\n  1. All your worked days will be terminated and invalidated.\n  2. You will be removed from the internship program at GSV Electrical Enterprises.\n  3. You will not be eligible to receive any internship completion certificate.\n  4. There will be no further relation or correspondence between you and the company.\n\nWe expect you to take immediate corrective action and adhere to the rules and regulations of the organization.`;
+
+            return `
+            <div style="font-family: 'Arial', sans-serif; max-width: 780px; margin: 0 auto; background: #fff; border: 1px solid #ddd; box-shadow: 0 2px 16px rgba(0,0,0,0.10); border-radius: 4px; overflow: hidden; text-align: left;">
+
+              <!-- LETTERHEAD -->
+              <div style="background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%); padding: 22px 32px 14px 32px; color: #fff;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <div>
+                    <div style="font-size: 22px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">⚡ GSV Electrical Enterprises</div>
+                    <div style="font-size: 11px; opacity: 0.88; margin-top: 3px;">GSV Electrical Enterprises Internship Portal and R&D Department</div>
+                  </div>
+                  <div style="text-align: right; font-size: 11px; opacity: 0.88; line-height: 1.7;">
+                    <div>📞 9092610415</div>
+                    <div>✉️ gsveeip2026@gmail.com</div>
+                    <div>🌐 gsvee.in</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SUB-HEADER: Address & GST -->
+              <div style="background: #fff3f3; border-bottom: 2px solid #d32f2f; padding: 7px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px;">
+                <div style="font-size: 11px; color: #555;">📍 Tamil Nadu, India</div>
+                <div style="font-size: 11px; color: #555;">Ref No: <strong>${wrnRef}</strong> &nbsp;|&nbsp; Date: <strong>${todayStr}</strong></div>
+              </div>
+
+              <div style="padding: 28px 36px;">
+
+                <!-- DOCUMENT TITLE -->
+                <div style="text-align: center; margin-bottom: 22px;">
+                  <div style="display: inline-block; background: #d32f2f; color: #fff; font-size: 13px; font-weight: 800; letter-spacing: 2px; padding: 6px 28px; border-radius: 2px; text-transform: uppercase;">⚠️ OFFICIAL WARNING NOTICE</div>
+                </div>
+
+                <!-- STUDENT DETAILS TABLE -->
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px;">
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; width: 35%; color: #444;">To (Student Name)</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${fullName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Registration ID</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-family: monospace;">${regId}</td>
+                  </tr>
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Email ID</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Phone Number</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${phone}</td>
+                  </tr>
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">College Name</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${college}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Register Number</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${regNo}</td>
+                  </tr>
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Department</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${displayDept}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Project / Internship Title</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 600;">${displayProject}</td>
+                  </tr>
+                  <tr style="background: #fafafa;">
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0; font-weight: 700; color: #444;">Internship Period</td>
+                    <td style="padding: 6px 10px; border: 1px solid #e0e0e0;">${startDate} &nbsp;to&nbsp; ${endDate}</td>
+                  </tr>
+                </table>
+
+                <!-- SALUTATION -->
+                <p style="font-size: 13px; margin-bottom: 14px;"><strong>Dear ${fullName},</strong></p>
+
+                <!-- BODY TEXT -->
+                <div style="font-size: 12.5px; line-height: 1.8; color: #222; white-space: pre-line; margin-bottom: 20px; text-align: justify;">${warningBody}</div>
+
+                <!-- ALERT BOX -->
+                <div style="background: #ffebee; border-left: 4px solid #d32f2f; padding: 12px 16px; border-radius: 3px; margin-bottom: 24px; font-size: 12px; color: #b71c1c; font-weight: 600;">
+                  ⚠️ This is an official warning. Failure to take corrective action may result in immediate termination of your internship and invalidation of all worked days.
+                </div>
+
+                <!-- SIGNATURE -->
+                <div style="margin-top: 30px; font-size: 12.5px;">
+                  <p style="margin: 0; font-style: italic;">Regards,</p>
+                  <p style="margin: 4px 0 0 0; font-weight: 800; font-size: 13px;">S Vijay Varman .DEEE, BE, MBA</p>
+                  <p style="margin: 2px 0; color: #555; font-size: 12px;">Chief Electrical Engineer</p>
+                  <p style="margin: 2px 0; font-weight: 700; color: #c62828;">GSV Electrical Enterprises</p>
+                  <p style="margin: 2px 0; font-size: 11px; color: #777;">📞 9092610415 &nbsp;|&nbsp; ✉️ gsveeip2026@gmail.com &nbsp;|&nbsp; 🌐 gsvee.in</p>
+                </div>
+
+                <!-- DIVIDER -->
+                <hr style="border: none; border-top: 1px dashed #ccc; margin: 22px 0;">
+
+                <!-- FOOTER -->
+                <div style="text-align: center; font-size: 10px; color: #999; font-style: italic;">
+                  🖥️ Digitally Generated — No Physical Signature Required &nbsp;|&nbsp; Generated on ${todayStr}<br>
+                  This is an auto-generated official document from GSV Electrical Enterprises Internship Portal.
+                </div>
+
+              </div>
+            </div>`;
+        }
+
+        function buildWarningEmailHTML(s, customReason) {
+            const fName = s.firstName || s.FirstName || '';
+            const mName = s.middleName || s.MiddleName || '';
+            const lName = s.lastName || s.LastName || '';
+            const fullName = s.name || (fName + ' ' + mName + ' ' + lName).trim() || 'N/A';
+            const regId = s.registrationId || s.RegistrationID || 'N/A';
+            const email = s.gmail || s.GmailID || 'N/A';
+            const college = s.college || s.collegeName || s.CollegeName || 'N/A';
+            const phone = s.mobile || s.mobileNumber || s.MobileNumber || 'N/A';
+            const regNo = s.registerNumber || s.RegisterNumber || 'N/A';
+            
+            const displayDept = `GSV / ${s.department || s.Department || 'N/A'} / ${s.projectName || s.interestedArea || s.InterestedArea || 'N/A'}`;
+            const displayProject = s.batch || s.Batch || 'N/A';
+
+            const startRaw = s.internshipStartDate || s.InternshipStartDate;
+            const endRaw = s.internshipEndDate || s.InternshipEndDate;
+            const startDate = startRaw ? new Date(startRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'}) : 'N/A';
+            const endDate = endRaw ? new Date(endRaw).toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'}) : 'N/A';
+            const todayStr = new Date().toLocaleDateString('en-IN', {day:'2-digit', month:'long', year:'numeric'});
+            const wrnRef = `WRN-${regId}-${new Date().getFullYear()}`;
+
+            const warningBodyText = `This is to inform you that an official Warning Notice has been issued regarding your internship performance at GSV Electrical Enterprises.
+            It has been observed that you are delaying the completion of your assigned project/task past the submission period.
+
+            Please note that the terms and conditions of this internship have already been communicated to you, and all necessary support has been provided. Even if your college reopens, you must obtain On-Duty (OD) permission from your college or coordinate with us to complete and submit your project. Completing and delivering your project is strictly mandatory. Furthermore, even if your project timeline or scheduled duration has expired, you must obtain permission for an extension and ensure that the project is completed and delivered from your side.
+            ${customReason ? `\n\nSpecific Details: ${customReason}` : ''}`;
+
+            return `
+            <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); text-align: left;">
+
+              <!-- Letterhead Header -->
+              <div style="background: linear-gradient(135deg, #c62828 0%, #b71c1c 100%); padding: 22px 28px 14px 28px; color: #fff;">
+                <div style="font-size: 20px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase;">⚡ GSV ELECTRICAL ENTERPRISES</div>
+                <div style="font-size: 11px; opacity: 0.85; margin-top: 3px;">GSV Electrical Enterprises Internship Portal and R&D Department</div>
+                <div style="font-size: 11px; margin-top: 6px; opacity: 0.85;">
+                  📞 9092610415 &nbsp;|&nbsp; ✉️ gsveeip2026@gmail.com &nbsp;|&nbsp; 🌐 gsvee.in
+                </div>
+              </div>
+
+              <!-- Sub-header -->
+              <div style="background: #fff3f3; border-bottom: 2px solid #d32f2f; padding: 7px 28px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px; font-size: 11px; color: #555;">
+                <span>📍 Tamil Nadu, India</span>
+                <span>Ref: <strong>${wrnRef}</strong> &nbsp;|&nbsp; Date: <strong>${todayStr}</strong></span>
+              </div>
+
+              <div style="padding: 24px 28px;">
+
+                <!-- Title badge -->
+                <div style="text-align: center; margin-bottom: 20px;">
+                  <span style="display:inline-block; background:#d32f2f; color:#fff; font-size:12px; font-weight:800; letter-spacing:2px; padding:6px 24px; border-radius:2px; text-transform:uppercase;">⚠️ OFFICIAL WARNING NOTICE</span>
+                </div>
+
+                <!-- Student details table -->
+                <table style="width:100%; border-collapse:collapse; font-size:12px; margin-bottom:18px;">
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; width:38%; color:#444;">To (Student Name)</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${fullName}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Registration ID</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-family:monospace;">${regId}</td>
+                  </tr>
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Email ID</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${email}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Phone Number</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${phone}</td>
+                  </tr>
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">College Name</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${college}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Register Number</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${regNo}</td>
+                  </tr>
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Department</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${displayDept}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Project / Internship Title</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:600;">${displayProject}</td>
+                  </tr>
+                  <tr style="background:#fafafa;">
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0; font-weight:700; color:#444;">Internship Period</td>
+                    <td style="padding:6px 10px; border:1px solid #e0e0e0;">${startDate} &nbsp;to&nbsp; ${endDate}</td>
+                  </tr>
+                </table>
+
+                <p style="font-size:13px; font-weight:700; margin-bottom:12px; color:#000;">Dear ${fullName},</p>
+                <div style="font-size:12px; color:#333; line-height:1.7; margin-bottom:12px; white-space:pre-line;">${warningBodyText}</div>
+
+                <!-- Alert box -->
+                <div style="background:#ffebee; border-left:4px solid #d32f2f; padding:12px 16px; border-radius:3px; margin-bottom:18px; font-size:12px; color:#b71c1c; font-weight:600;">
+                  ⚠️ Please find the official warning document attached to this email. You are instructed to read it carefully and take immediate corrective action.<br><br>
+                  Failure to comply — including continued project delay, unauthorized absence (3+ days), or indiscipline — will result in immediate internship termination, invalidation of all worked days, and ineligibility for the completion certificate.
+                </div>
+
+                <!-- Signature -->
+                <div style="margin-top:24px; font-size:12px; color:#333;">
+                  <p style="margin:0; font-style:italic;">Regards,</p>
+                  <p style="margin:4px 0 0 0; font-weight:800; font-size:13px;">S Vijay Varman .DEEE, BE, MBA</p>
+                  <p style="margin:2px 0; color:#666;">Chief Electrical Engineer</p>
+                  <p style="margin:2px 0; font-weight:700; color:#c62828;">GSV Electrical Enterprises</p>
+                </div>
+
+                <hr style="border:none; border-top:1px dashed #ddd; margin:20px 0;">
+
+                <div style="text-align:center; font-size:10px; color:#aaa; font-style:italic;">
+                  🖥️ Digitally Generated — No Physical Signature Required &nbsp;|&nbsp; ${todayStr}<br>
+                  Auto-generated by GSV Electrical Enterprises Internship Portal.
+                </div>
+
+              </div>
+            </div>`;
         }
 
         function sendBatchWarningNotices() {
