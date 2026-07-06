@@ -1,3 +1,34 @@
+# Walkthrough: Layout Bounds Fix, Opt-out Archive Flow, Applications Table & RFID Label Printing
+
+This walkthrough summarizes the changes made to resolve the admin panel layout boundary overflow, refine the "Opt-out" deletion and archive process, enhance the Applications view with college, department, and internship period details, add an unbatched filter, and implement card-sized RFID label printing.
+
+## Changes Made
+
+### 1. Google Apps Script Backend (`code.js`)
+- **Opt-out Archive & Data Deletion**: Updated the backend `updateApplicationStatus()` function and background cleanup function `cleanOptOutStudents()` to archive opted-out students in the `Closed and Opt-out` sheet first, wipe their active Google Drive folders, and call `clearStudentRelatedRecords(regId)` to delete all associated records in attendance, tasks, projects, diaries, file managers, and requests.
+- **Corrupt Rows Purge**: Implemented `cleanCorruptRows()` to automatically scan the `Registrations` and `Closed and Opt-out` sheets and purge rows where the Registration ID is empty or `"undefined"`, or where the name is `"Student"` / empty with no ID.
+- **Unified Applications Data**: Enhanced `getApplications()` to return additional metadata (`college`, `department`, `internshipStart`, `internshipEnd`, and `batch`) for each student.
+
+### 2. Admin Dashboard Front-End (`AdminDashboard.html`)
+- **Desktop Horizontal Table Scrolling**: Modified global responsive table styles so that on desktop screens, tables scroll horizontally instead of stretching the main panel content outside of the page boundaries (adding `max-width: 100% !important` and block display constraints).
+- **RFID Label Text Reduction**: Reduced the text inside the RFID column badge to display only the numeric tag ID (omitting the "Card Assigned" prefix). Wiped "RFID Card Assigned" from the Status column in favor of a compact "RFID: {number}" label.
+- **Card Assigned Status Filter Fix**: Fixed a bug where students who had a batch assigned but no card assigned were incorrectly shown under the "Card Assigned" filter by mapping the option filter value to match the new compact RFID badge pattern.
+- **Applications View Expansion**: Added column headers for **College / Dept** and **Period** in the Applications list, rendering them with a premium layout that dynamically maps to mobile card formats.
+- **Batch Dropdown Filter**: Added a **Batch Status** dropdown filter next to the status filter in the Applications tab, allowing filtering by "Unbatched Only", "Batched Only", or "All".
+- **RFID Label Preview Modal**: Implemented `rfidPrintLabelModal` displaying a premium CR80-sized (85.6mm x 54mm) ID card preview featuring a background gradient, student registration details, organization logo, NFC indicator, and a dynamically-rendered QR code.
+- **Print Handler**: Created `printRfidLabel(regId)` which opens a print window configured with custom CSS media print styles matching CR80 standard card dimensions, generating a clean print layout with a QR code from `quickchart.io` representing the registration ID.
+- **Actions Button**: Added a **PRINT** button inside the "Assigned Students" tab list Actions column, allowing one-click preview and printing.
+
+---
+
+## Verification Results
+
+### 1. Code Deployment
+- Successfully pushed the updated files to Google Apps Script via `clasp push`.
+- Deployed the code under the active deployment ID.
+
+---
+
 # Walkthrough: Bulk RFID Auto-Assignment & ESP32 Sequential LCD Update
 
 This walkthrough summarizes the changes made to implement bulk RFID card auto-assignment, display detailed student information on all Request Management tables, resolve ESP32 `HTTP -11` read timeout issues, and enforce inventory/assignment validation on the LCD screens.
@@ -422,4 +453,81 @@ We have successfully resolved login restrictions for students with status `"Assi
 ### 3. Apps Script Push & Deploy
 - Successfully pushed the updated files to Google Apps Script via `clasp push`.
 - Deployed script changes as **Version 168** under the active deployment ID (`AKfycbxvPlPHaajzeUdf8JqzPBe_5n7vswC18RPv1N9rwprjf1w6k-4slmE2aCzjDgDRsoIGDw`).
+
+---
+
+# Walkthrough: Batch Title & Attendance Status Enhancements
+
+We have successfully implemented Batch Title & Attendance Status Enhancements, synchronized Certificate and Skill Learned titles, updated batch grid UI displays, direct-registered late check-ins, and enforced original punch times on request approvals.
+
+## Changes Made
+
+### 1. Google Apps Script Backend (`code.js`)
+- **Synchronized Titles**: Updated batch creation and editing functions (`createBatch` and `updateBatchDetails`) to write the synchronized value (from the unified "Skill Learned" input) to both `BatchTitle` and `SkillLearned` columns in the spreadsheet.
+- **Direct Late Check-ins**: Updated check-in status calculation (`determineCheckinStatus`) to register students directly as `Late` or `Late with Present` after the grace check-in time, instead of generating a pending check-in approval request.
+- **Original Student Request Punch Time on Approval**: Ensured that upon admin approval or OTP verification, the spreadsheet registers the student's original request punch time (`TargetTime` in the attendance request log) instead of the current system clock time.
+
+### 2. Admin Dashboard Front-End (`AdminDashboard.html`)
+- **Removed Redundant Inputs**: Hidden redundant "Certificate Title" input fields from batch creation and edit forms, keeping only the "Skill Learned" input to avoid admin confusion.
+- **Batch Grid UI Cards**: Modified batch cards to display the "Batch Title" in bold directly inside the card body, situated above the "Industrial Supervisor" info, rather than only in the header.
+
+---
+
+## Verification Results
+
+### 1. Apps Script Deployment
+- Successfully pushed the updated backend and frontend code to the Google Apps Script project using `clasp push -f`.
+- Deployed the changes under active deployment ID `AKfycbxvPlPHaajzeUdf8JqzPBe_5n7vswC18RPv1N9rwprjf1w6k-4slmE2aCzjDgDRsoIGDw` as **Version 169**.
+
+---
+
+# Walkthrough: Legacy Batch Slot Timing & Grace Save/Load Fix
+
+We have successfully resolved the issue where editing a legacy batch slot did not load the previously saved "Late After", "Early Exit Before", and "Grace" settings.
+
+## Changes Made
+
+### 1. Google Apps Script Backend (`code.js`)
+- **Robust Key Matching**: Updated `getSlotTimingsList()` to map batch configuration entries in `batchTimingMap` under both their raw sheet value and resolved name/ID variants. This bridges any discrepancies between BatchID (e.g. `BAT-101`) and BatchName (e.g. `Batch A`).
+- **Normalized Query Lookup**: Configured `getSlotTimingsList()` to perform legacy slots and exception mapping queries using both `s.BatchID` and `batchName` keys.
+- **Robust Expiry Date Parsing**: Enhanced the deduplication loop to use a safe date parser, avoiding any timezone or missing date comparison failures.
+- **Robust Check-in Matching**: Updated `getSlotTiming()` to resolve `s.batch` from `SLOT_SETTINGS` before comparing against `normName`.
+- **Deduplication on Save**: Upgraded `saveNewSlotTiming()` to match BATCH slot configurations using resolved batch names to prevent duplicate row entries.
+
+### 2. Admin Dashboard Front-End (`AdminDashboard.html`)
+- **Unconditional Legacy Save**: Modified `saveSlotTimingAdmin()` to write legacy extras to `SLOT_SETTINGS` unconditionally whenever `isLegacySave && data.batch` is true, ensuring settings are updated when rules are cleared or disabled.
+
+## Verification Results
+
+### 1. Apps Script Deployment
+- Successfully pushed all files to the Google Apps Script project via `clasp push`.
+- Deployed the new version as **Version 170** under active deployment ID `AKfycbxvPlPHaajzeUdf8JqzPBe_5n7vswC18RPv1N9rwprjf1w6k-4slmE2aCzjDgDRsoIGDw`.
+
+### 2. Syntax Validation
+- Validated Javascript syntax with no errors.
+
+
+
+# Walkthrough: Student Dashboard Initialization Fix
+
+We have successfully resolved the issue where the Student Dashboard remains stuck on the "Initializing Dashboard..." screen overlay after logging in.
+
+## Changes Made
+
+### 1. Google Apps Script Backend (`code.js`)
+- **Fix ReferenceError in `getStudentComprehensiveProfile`**: Corrected a runtime `ReferenceError` where `details.registrationId` was accessed inside the initialization block of the `details` object literal (Temporal Dead Zone). Replaced `details.registrationId` with the function parameter `regId` in the `permissions.attendance` and `permissions.diary` fields.
+
+## Verification Results
+
+### 1. Code Fix
+- Replaced the circular ReferenceError block in `code.js` with direct usage of `regId`:
+  ```javascript
+  permissions: {
+    attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('attendance'),
+    diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('diary')
+  }
+  ```
+- This allows `getStudentComprehensiveProfile` to execute successfully and return a `success` status payload to the client-side dashboard initial load query, clearing the loading spinner overlay and letting the student dashboard panel open.
+
+
 

@@ -494,6 +494,7 @@ void setup() {
     }
 
     if (connected) {
+      WiFi.mode(WIFI_STA); // Turn off softAP, keep only STA
       hasInternet = true;
       localIpStr = WiFi.localIP().toString();
 
@@ -714,6 +715,7 @@ void backgroundSyncTask(void *pvParameters) {
       disconnectStartTime = 0; // Reset disconnect timer
       if (lastWiFiStatus != WL_CONNECTED) {
         webLog("WiFi: Reconnected! Re-starting mDNS.");
+        WiFi.mode(WIFI_STA); // Turn off softAP, keep only STA
         localIpStr = WiFi.localIP().toString();
         WiFi.setHostname(DEVICE_NAME);
         vTaskDelay(pdMS_TO_TICKS(500)); // Let stack stabilize
@@ -2431,6 +2433,7 @@ void connectWiFi() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
+    WiFi.mode(WIFI_STA); // Turn off softAP, keep only STA
     localIpStr = WiFi.localIP().toString();
     configTime(19800, 0, "pool.ntp.org", "time.google.com");
     timeSynced = true;
@@ -4458,8 +4461,7 @@ void handleSaveNetwork() {
   preferences.begin("gsv-rfid", false);
   preferences.putString("ssid", ssid);
   preferences.putString("pass", pass);
-  if (script != "")
-    preferences.putString("scriptId", script);
+  preferences.putString("scriptId", script); // Always write, even if empty
   preferences.end();
 
   server.send(200, "application/json", "{\"success\":true}");
@@ -4476,10 +4478,8 @@ void handleSaveSystem() {
   String pass = server.arg("adminPass");
 
   preferences.begin("gsv-rfid", false);
-  if (script != "") {
-    preferences.putString("scriptId", script);
-    scriptId = script;
-  }
+  preferences.putString("scriptId", script); // Always write, even if empty
+  scriptId = script;
   if (user != "") {
     preferences.putString("devUser", user);
     deviceUser = user;

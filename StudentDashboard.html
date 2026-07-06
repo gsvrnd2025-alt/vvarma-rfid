@@ -6386,18 +6386,23 @@
             loadSettings();
 
             console.log("DEBUG: Step 3 - setupDashboard calling");
-            setupDashboard(loggedInStudentData, studentData);
-
-            // Hide loading overlay
-            const overlay = document.getElementById('loadingOverlay');
-            if (overlay) {
-                overlay.style.opacity = '0';
-                overlay.style.transition = 'opacity 0.5s ease-out';
-                setTimeout(() => {
-                    overlay.style.display = 'none';
-                    overlay.style.pointerEvents = 'none'; // Safety
-                }, 500);
-                console.log("DEBUG: Hidden loading overlay");
+            try {
+                setupDashboard(loggedInStudentData, studentData);
+            } catch (err) {
+                console.error("CRITICAL error during setupDashboard:", err);
+                showErrorModal("Error setting up dashboard: " + err.message);
+            } finally {
+                // Hide loading overlay
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) {
+                    overlay.style.opacity = '0';
+                    overlay.style.transition = 'opacity 0.5s ease-out';
+                    setTimeout(() => {
+                        overlay.style.display = 'none';
+                        overlay.style.pointerEvents = 'none'; // Safety
+                    }, 500);
+                    console.log("DEBUG: Hidden loading overlay (finally)");
+                }
             }
 
             // Reset scroll to top on initial load to fix potential "scrolled down" state
@@ -6719,46 +6724,86 @@
             }
 
             // 1. COMPLETION CHECK
-            if (status === 'completed') {
+            const isCompleted = status.includes('completed') || status.includes('ended') || (internEnd && today > internEnd);
+            if (isCompleted) {
                 if (internEnd) {
                     const expiryDate = new Date(internEnd);
-                    expiryDate.setDate(expiryDate.getDate() + 61); // 60 days hard expiry
+                    expiryDate.setDate(expiryDate.getDate() + 31); // 30 days hard expiry
                     if (today >= expiryDate) {
-                        showErrorModal("Your internship portal access has expired (60-day limit ended).");
+                        showErrorModal("Your internship portal access has expired (30-day limit ended).");
                         setTimeout(() => window.location.href = 'Index.html', 5000);
                         return;
                     }
                 }
 
-                const isWithinInternship = internStart && internEnd && today >= new Date(internStart) && today <= new Date(internEnd);
-
-                // Restriction Mode
+                // Restriction Mode for Completed Students
                 document.querySelectorAll('.nav-link-custom').forEach(link => {
                     const onclick = link.getAttribute('onclick') || "";
-                    // Always allow profile, file manager, admin, mail, whatsapp, reports
-                    const alwaysAllowed = ['profile', 'fileManager', 'admin', 'mailAdmin', 'whatsapp', 'reports'].some(key => onclick.includes(key));
+                    // Always allow Profile, File Manager, Support/WhatsApp/Mail
+                    const alwaysAllowed = ['profile', 'filemanager', 'fileManager', 'admin', 'mailAdmin', 'whatsapp', 'reports'].some(key => onclick.toLowerCase().includes(key.toLowerCase()));
                     
                     let graceAllowed = false;
-                    const isAttendanceTab = onclick.includes('attendance');
-                    const isDiaryTab = onclick.includes('diary');
-                    
-                    if (isWithinInternship) {
-                        if (isAttendanceTab && permissions.attendance) graceAllowed = true;
-                        if (isDiaryTab && permissions.diary) graceAllowed = true;
-                    } else {
-                        // After internship: only allowed if they have an approved active grace period (mapped in permissions)
-                        if (isAttendanceTab && permissions.attendance) graceAllowed = true;
-                        if (isDiaryTab && permissions.diary) graceAllowed = true;
-                    }
+                    const isAttendanceTab = onclick.toLowerCase().includes('attendance');
+                    const isDiaryTab = onclick.toLowerCase().includes('diary');
+                    const isTasksTab = onclick.toLowerCase().includes('tasks');
+                    const isProjectsTab = onclick.toLowerCase().includes('projects');
+                    const isSettingsTab = onclick.toLowerCase().includes('settings');
 
-                    if (!alwaysAllowed && !graceAllowed) {
-                        link.classList.add('disabled-nav-item');
-                        link.style.pointerEvents = 'none';
-                        link.style.opacity = '0.4';
+                    if (isAttendanceTab && permissions.attendance) graceAllowed = true;
+                    if (isDiaryTab && permissions.diary) graceAllowed = true;
+                    if (isTasksTab && permissions.tasks) graceAllowed = true;
+                    if (isProjectsTab && permissions.projects) graceAllowed = true;
+
+                    if (!alwaysAllowed) {
+                        if (graceAllowed) {
+                            link.classList.remove('disabled-nav-item');
+                            link.style.pointerEvents = 'auto';
+                            link.style.opacity = '1';
+                        } else {
+                            link.classList.add('disabled-nav-item');
+                            link.style.opacity = '0.4';
+                            
+                            if (isSettingsTab) {
+                                link.style.pointerEvents = 'none';
+                            } else {
+                                link.style.pointerEvents = 'auto';
+                                let targetArea = '';
+                                if (isAttendanceTab) targetArea = 'Attendance';
+                                else if (isDiaryTab) targetArea = 'Diary';
+                                else if (isTasksTab) targetArea = 'Tasks';
+                                else if (isProjectsTab) targetArea = 'Projects';
+
+                                link.setAttribute('onclick', `openGracePeriodModal('${targetArea}')`);
+
+                                if (!link.querySelector('.nav-lock-icon')) {
+                                    const lock = document.createElement('i');
+                                    lock.className = 'bi bi-lock-fill ms-auto small opacity-75 nav-lock-icon';
+                                    link.appendChild(lock);
+                                }
+                            }
+                        }
                     }
                 });
 
-                if (!isWithinInternship) {
+                // Redirect to Profile tab if current active tab is restricted and not approved
+                const restrictedTabs = {
+                    'attendance': permissions.attendance,
+                    'diary': permissions.diary,
+                    'tasks': permissions.tasks,
+                    'projects': permissions.projects,
+                    'settings': false,
+                    'dashboard': false
+                };
+                
+                let isCurrentRestricted = false;
+                for (let [tabId, hasAccess] of Object.entries(restrictedTabs)) {
+                    if (currentActiveStudentSectionId.toLowerCase().includes(tabId) && !hasAccess) {
+                        isCurrentRestricted = true;
+                        break;
+                    }
+                }
+                
+                if (isCurrentRestricted) {
                     showStudentSection('profile');
                 }
                 return;
@@ -8911,7 +8956,7 @@
         }
 
         /* --- OTHER UTILITIES --- */
-        function openGracePeriodModal() {
+        function openGracePeriodModal(defaultArea = '') {
             const eStr = loggedInStudentData.internshipEndDate || loggedInStudentData.endDate || loggedInStudentData.EndDate || loggedInStudentData.InternshipEndDate;
             if (!eStr) { showErrorModal("Internship end date not defined in student data."); return; }
 
@@ -8927,6 +8972,18 @@
             document.getElementById('graceEndDate').value = formatDateISO(maxEnd);
             document.getElementById('graceEndDate').min = formatDateISO(nextDay);
             document.getElementById('graceEndDate').max = formatDateISO(maxEnd);
+
+            // Uncheck all
+            ['Attendance', 'Diary', 'Tasks', 'Projects'].forEach(area => {
+                const chk = document.getElementById('area' + area);
+                if (chk) chk.checked = false;
+            });
+
+            // Check default area
+            if (defaultArea) {
+                const chk = document.getElementById('area' + defaultArea);
+                if (chk) chk.checked = true;
+            }
 
             const modalEl = document.getElementById('gracePeriodModal');
             if (modalEl) {

@@ -137,9 +137,14 @@
             --transition: all 0.3s ease;
         }
 
-        /* Prevent table responsive containers from clipping dropdown action menus */
-        .table-responsive {
-            overflow: visible !important;
+        /* Prevent table responsive containers from clipping dropdown action menus on mobile cards, but keep within bounds on desktop */
+        @media (min-width: 768px) {
+            .table-responsive {
+                overflow-x: auto !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                display: block !important;
+            }
         }
 
         body {
@@ -3761,6 +3766,8 @@
                 Project</a>
             <a href="#" onclick="showSection('generateDocuments', this)"><i class="fas fa-file-export"></i>
                 Documents</a>
+            <a href="#" onclick="showSection('warningNotice', this)"><i class="fas fa-exclamation-triangle"></i>
+                Warning Notice</a>
             <a href="#" onclick="showSection('sendMail', this)"><i class="fas fa-envelope-open-text"></i> Send Mail</a>
             <a href="#" onclick="showSection('reports', this)"><i class="fas fa-chart-bar"></i> Reports</a>
             <a href="#" onclick="showSection('noticesManagement', this)"><i class="fas fa-bullhorn"></i> Notices &
@@ -3898,8 +3905,14 @@
                         <option value="Closed">Closed</option>
                         <option value="Opt-out">Opt-out</option>
                     </select>
+                    <label for="applicationBatchFilter" style="margin-left: 10px;">Batch Status:</label>
+                    <select id="applicationBatchFilter" class="form-select form-select-sm" onchange="filterApplicationsTable()">
+                        <option value="All">All</option>
+                        <option value="Unbatched">Unbatched Only</option>
+                        <option value="Batched">Batched Only</option>
+                    </select>
                     <input type="text" id="applicationSearchInput" class="form-control form-control-sm"
-                        placeholder="Search by Name or Reg ID..." onkeyup="filterApplicationsTable()">
+                        placeholder="Search by Name, Reg ID, College..." onkeyup="filterApplicationsTable()">
                 </div>
                 <div id="applicationsBulkActions" class="bulk-actions-bar">
                     <span id="applicationsSelectedCount">0 selected</span>
@@ -3918,6 +3931,8 @@
                                 <th>Reg. ID</th>
                                 <th>Name</th>
                                 <th>Email</th>
+                                <th>College / Dept</th>
+                                <th>Period</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -4191,7 +4206,7 @@
                         <option value="completed">Completed</option>
                         <option value="incomplete">Incomplete</option>
                         <option value="approved">Approved</option>
-                        <option value="assigned">Card Assigned</option>
+                        <option value="rfid:">Card Assigned</option>
                         <option value="active">Active</option>
                         <option value="pending">Pending</option>
                         <option value="closed">Closed</option>
@@ -4274,7 +4289,7 @@
                                 <option value="Software">Software</option>
                             </select>
                         </div>
-                        <div class="col-md-9">
+                        <div class="col-md-9" style="display: none;">
                             <label for="newBatchTitle" class="form-label small fw-bold"><i class="fas fa-certificate me-1 text-warning"></i> Certificate Title <span class="text-muted fw-normal">(appears on certificate)</span></label>
                             <input type="text" class="form-control" id="newBatchTitle" placeholder="e.g. Industrial Internship in Embedded Systems">
                         </div>
@@ -5861,6 +5876,63 @@
             </div>
         </div>
 
+        <!-- Warning Notice Section -->
+        <div id="warningNoticeSection" class="content-section">
+            <div class="card premium-card">
+                <div class="card-header bg-danger text-white">
+                    <i class="fas fa-exclamation-triangle"></i> Official Warning Notice Dispatcher
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label font-semibold text-sm">Filter by Batch</label>
+                            <select id="warnFilterBatch" class="form-select bg-slate-50 border-slate-200" onchange="filterWarningStudents()">
+                                <option value="">All Batches</option>
+                            </select>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label font-semibold text-sm">Search Student</label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0 text-slate-400"><i class="fas fa-search"></i></span>
+                                <input type="text" id="warnSearchKey" class="form-control border-start-0 bg-slate-50" placeholder="Search by name, ID or email..." oninput="filterWarningStudents()">
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label font-semibold text-sm">Custom Warning Reason (Optional)</label>
+                            <input type="text" id="warnCustomReason" class="form-control bg-slate-50" placeholder="e.g. Project 'Smart Grid' delay of 14 days...">
+                        </div>
+                    </div>
+
+                    <div class="table-responsive border border-slate-100 rounded-lg shadow-sm max-h-[400px] overflow-y-auto mb-3">
+                        <table class="table table-hover align-middle mb-0" id="warnStudentTable">
+                            <thead class="bg-slate-50 border-bottom border-slate-100 sticky-top">
+                                <tr>
+                                    <th width="40" class="text-center">
+                                        <input type="checkbox" class="form-check-input border-slate-300" id="warnSelectAll" onchange="toggleSelectAllWarnings(this)">
+                                    </th>
+                                    <th>Registration ID</th>
+                                    <th>Full Name</th>
+                                    <th>Gmail ID</th>
+                                    <th>Batch</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="warnStudentTableBody">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-3">
+                        <span id="warnSelectedCount" class="text-muted text-sm font-semibold">0 students selected</span>
+                        <button type="button" class="btn btn-danger px-4 py-2" id="btnSendBatchWarning" onclick="sendBatchWarningNotices()">
+                            <i class="fas fa-paper-plane me-2"></i> Send Official Warning Mail
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Send Mail Section -->
         <div id="sendMailSection" class="content-section">
             <div class="card premium-card">
@@ -7309,7 +7381,7 @@
                                     <input type="text" id="editBatchMentor" class="batch-input"
                                         placeholder="Assigned Industrial Supervisor">
                                 </div>
-                                <div class="batch-form-group" style="grid-column: 1 / -1;">
+                                <div class="batch-form-group" style="grid-column: 1 / -1; display: none;">
                                     <label><i class="fas fa-certificate me-1 text-warning"></i> Certificate Title <span style="font-weight:400; text-transform:none; font-size:0.7rem; color:#94a3b8;">(appears on certificate — shown in bold)</span></label>
                                     <input type="text" id="editBatchCertTitle" class="batch-input"
                                         placeholder="e.g. Industrial Internship in Embedded Systems">
@@ -8047,6 +8119,81 @@
                     onclick="closeModal('adminCommentModal')">Cancel</button>
                 <button type="button" class="btn btn-primary" onclick="saveAdminCommentToStudent()">
                     <i class="fas fa-paper-plane me-2"></i> Save & Notify Student
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RFID Print Label Preview Modal -->
+    <div id="rfidPrintLabelModal" class="modal">
+        <div class="modal-content" style="max-width: 500px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.2);">
+            <div class="modal-header" style="background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; padding: 20px 24px; border-radius: 20px 20px 0 0;">
+                <h2 style="color: white; margin: 0; font-size: 1.25rem;"><i class="fas fa-print me-2"></i> Print RFID Card Label</h2>
+                <span class="close-btn" style="color: white;" onclick="closeModal('rfidPrintLabelModal')">&times;</span>
+            </div>
+            <div class="modal-body" style="padding: 24px; display: flex; flex-direction: column; align-items: center; background-color: #f8fafc;">
+                <!-- Premium Card Preview -->
+                <div id="rfidCardPreviewContainer" style="width: 380px; height: 240px; background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); border-radius: 12px; position: relative; padding: 18px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); color: white; box-sizing: border-box; font-family: 'Poppins', sans-serif;">
+                    <!-- Card Background Pattern / Accents -->
+                    <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 50%); border-radius: 12px; pointer-events: none;"></div>
+                    
+                    <!-- Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                        <div>
+                            <div style="font-size: 0.85rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #4fc3f7;">RFID ACCESS CARD</div>
+                            <div style="font-size: 0.6rem; color: #b0bec5; font-weight: 500; letter-spacing: 0.5px;">INTERNSHIP HUB</div>
+                        </div>
+                        <div style="background: rgba(79, 195, 247, 0.2); color: #4fc3f7; padding: 3px 10px; border-radius: 20px; font-size: 0.55rem; font-weight: 800; text-transform: uppercase; border: 1px solid rgba(79, 195, 247, 0.3);">INTERN</div>
+                    </div>
+                    
+                    <!-- Main details container -->
+                    <div style="display: flex; gap: 15px; margin-top: 15px;">
+                        <!-- QR Code -->
+                        <div style="background: white; padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.15);">
+                            <img id="rfidCardPreviewQr" src="" style="width: 100px; height: 100px;" alt="QR Code">
+                        </div>
+                        
+                        <!-- Student Details -->
+                        <div style="display: flex; flex-direction: column; justify-content: center; flex: 1;">
+                            <div id="rfidCardPreviewName" style="font-size: 1.05rem; font-weight: 700; line-height: 1.2; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 210px;">STUDENT NAME</div>
+                            <div id="rfidCardPreviewId" style="font-size: 0.72rem; color: #b0bec5; font-family: monospace; letter-spacing: 0.5px; margin-bottom: 6px;">REG-2026-XXXX</div>
+                            
+                            <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 6px; display: flex; flex-direction: column; gap: 2px;">
+                                <div style="font-size: 0.6rem; color: #b0bec5; font-weight: 500;">
+                                    <i class="fas fa-university" style="width: 12px; color: #4fc3f7;"></i>
+                                    <span id="rfidCardPreviewCollege">COLLEGE NAME</span>
+                                </div>
+                                <div style="font-size: 0.6rem; color: #b0bec5; font-weight: 500;">
+                                    <i class="fas fa-briefcase" style="width: 12px; color: #4fc3f7;"></i>
+                                    <span id="rfidCardPreviewDept">DEPARTMENT</span>
+                                </div>
+                                <div style="font-size: 0.6rem; color: #b0bec5; font-weight: 500;">
+                                    <i class="fas fa-layer-group" style="width: 12px; color: #4fc3f7;"></i>
+                                    <span id="rfidCardPreviewBatch">BATCH NAME</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Footer Info (RFID Tag ID and Chip Indicator) -->
+                    <div style="position: absolute; bottom: 12px; left: 18px; right: 18px; display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 6px; font-size: 0.55rem; color: #90a4ae;">
+                        <div>
+                            <i class="fas fa-id-card me-1"></i> <span id="rfidCardPreviewTagUid">TAG UID: 0000000</span>
+                        </div>
+                        <div style="font-weight: 600; color: #81c784;">
+                            <i class="fas fa-wifi"></i> NFC ENABLED
+                        </div>
+                    </div>
+                </div>
+                
+                <p style="margin-top: 15px; font-size: 0.8rem; color: #64748b; text-align: center;">
+                    Card dimensions are optimized for CR80 standard ID cards (85.6mm x 54mm). Confirm to open the print layout.
+                </p>
+            </div>
+            <div class="modal-footer" style="background-color: #f1f5f9; border-top: 1px solid #e2e8f0; padding: 16px 24px; border-radius: 0 0 20px 20px;">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('rfidPrintLabelModal')" style="border-radius: 8px; font-weight: 600;">Cancel</button>
+                <button type="button" id="rfidConfirmPrintBtn" class="btn btn-primary" style="background: linear-gradient(135deg, #1e3c72, #2a5298); border: none; border-radius: 8px; font-weight: 600; padding: 8px 20px;">
+                    <i class="fas fa-print me-2"></i> Print Label
                 </button>
             </div>
         </div>
@@ -9981,6 +10128,7 @@
                     case 'settings': showSettingsTab('general'); break;
                     case 'reports': toggleReportOptions(); break;
                     case 'noticesManagement': loadAdminNotices(); break;
+                    case 'warningNotice': initWarningNoticeSection(); break;
                 }
                 setTimeout(() => { activeDataLoaders[sectionId] = false; }, 2000);
             }
@@ -13638,7 +13786,7 @@
             if (rfidTag && String(rfidTag).trim()) {
                 const displayTag = String(rfidTag).trim();
                 html += `<br><span class="status-badge" style="background:#e8f5e9 !important;color:#2e7d32 !important;border:1px solid #a5d6a7 !important;font-size:0.62rem;margin-top:3px;display:inline-flex;align-items:center;gap:3px;padding:2px 5px;font-weight:700;letter-spacing:0.5px;">
-                    <i class="fas fa-id-card" style="font-size:0.6rem;"></i> RFID Card Assigned (${displayTag})
+                    <i class="fas fa-id-card" style="font-size:0.6rem;"></i> RFID: ${displayTag}
                 </span>`;
             }
 
@@ -13763,12 +13911,26 @@
                     `;
 
                     const isOptOut = String(status).toLowerCase().includes('opt');
+                    const collegeName = app.college || '-';
+                    const deptName = app.department || '';
+                    const batchLabel = app.batch ? `<span class="badge mt-1" style="font-size:0.65rem; background-color: rgba(67, 97, 238, 0.15) !important; color: #4361ee !important; border: 1px solid rgba(67, 97, 238, 0.3) !important; font-weight: bold; display: inline-block;">${app.batch}</span>` : '';
+                    const collegeHtml = `<div class="fw-bold text-dark" style="font-size:0.9rem;">${collegeName}</div>
+                        ${deptName ? `<div class="small text-muted" style="font-size:0.78rem;">${deptName}</div>` : ''}
+                        ${batchLabel}`;
+
+                    const periodHtml = `<div class="fw-bold">
+                        ${app.internshipStart ? formatDate(app.internshipStart) : 'N/A'} 
+                        ${app.internshipEnd ? ' - ' + formatDate(app.internshipEnd) : ' - N/A'}
+                    </div>`;
+
                     tbody.innerHTML += `
-              <tr data-regid="${app.registrationId}" class="${isOptOut ? 'opt-out-row' : ''}">
+              <tr data-regid="${app.registrationId}" data-batch="${(app.batch || '').toLowerCase()}" class="${isOptOut ? 'opt-out-row' : ''}">
                 <td class="checkbox-cell"><input type="checkbox" onchange="updateBulkActionUI('applications')"></td>
                 <td data-label="Reg ID">${app.registrationId}</td>
                 <td data-label="Name" class="fw-bold">${app.name}</td>
                 <td data-label="Gmail">${app.gmail}</td>
+                <td data-label="College">${collegeHtml}</td>
+                <td data-label="Period">${periodHtml}</td>
                 <td data-label="Status">
                     ${getStatusBadgesHtml(app)}
                 </td>
@@ -14600,13 +14762,31 @@
 
         function filterApplicationsTable() {
             const search = document.getElementById('applicationSearchInput').value.trim().toLowerCase();
+            const batchFilter = document.getElementById('applicationBatchFilter') ? document.getElementById('applicationBatchFilter').value : 'All';
             const table = document.getElementById('applicationsTable');
             const rows = table.querySelectorAll('tbody tr');
+            
             rows.forEach(row => {
-                if (row.cells.length < 3) return;
-                const regId = row.cells[1].textContent.toLowerCase();
+                if (row.cells.length < 5) return;
+                
+                const regId = row.dataset.regid ? row.dataset.regid.toLowerCase() : '';
                 const name = row.cells[2].textContent.toLowerCase();
-                row.style.display = (regId.includes(search) || name.includes(search)) ? '' : 'none';
+                const collegeDept = row.cells[4].textContent.toLowerCase();
+                
+                const batch = row.dataset.batch || '';
+                
+                // Check search filter (ID, Name, College/Dept)
+                const matchesSearch = regId.includes(search) || name.includes(search) || collegeDept.includes(search);
+                
+                // Check batch filter
+                let matchesBatch = true;
+                if (batchFilter === 'Unbatched') {
+                    matchesBatch = !batch || batch.trim() === '' || batch.trim() === '-';
+                } else if (batchFilter === 'Batched') {
+                    matchesBatch = batch && batch.trim() !== '' && batch.trim() !== '-';
+                }
+                
+                row.style.display = (matchesSearch && matchesBatch) ? '' : 'none';
             });
         }
 
@@ -14821,7 +15001,7 @@
                     // RFID column
                     const rfidTag = student.rfidTag || (d && (d.rfidTag || d.RFID_TagID)) || '';
                     const rfidHtml = rfidTag && String(rfidTag).trim()
-                        ? `<span class="badge fw-bold" style="background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;font-size:0.72rem;"><i class="fas fa-id-card me-1" style="font-size:0.65rem;"></i>Card Assigned (${rfidTag})</span>`
+                        ? `<span class="badge fw-bold" style="background:#e3f2fd;color:#0d47a1;border:1px solid #90caf9;font-size:0.72rem;"><i class="fas fa-id-card me-1" style="font-size:0.65rem;"></i>${rfidTag}</span>`
                         : `<span class="text-muted" style="font-size:0.8rem;">—</span>`;
 
                     tbody.innerHTML += `
@@ -14919,11 +15099,17 @@
                     <div class="batch-card-header">
                         <div>
                             <h3>${b.name}</h3>
-                            ${b.title ? `<div class="batch-card-cert-title"><i class="fas fa-certificate me-1" style="color:#f59e0b; font-size:0.7rem;"></i><strong>${b.title}</strong></div>` : ''}
                         </div>
                         <span class="badge ${b.status === 'Inactive' ? 'bg-secondary' : 'bg-success'} rounded-pill">${b.status || 'Active'}</span>
                     </div>
                     <div class="batch-card-body">
+                        <div class="batch-info-item">
+                            <div class="batch-info-icon"><i class="fas fa-certificate text-warning"></i></div>
+                            <div class="batch-info-text">
+                                <span class="batch-info-label">Batch Title</span>
+                                <span class="batch-info-value fw-bold text-dark">${b.title || b.skillLearned || '—'}</span>
+                            </div>
+                        </div>
                         <div class="batch-info-item">
                             <div class="batch-info-icon"><i class="fas fa-user-tie"></i></div>
                             <div class="batch-info-text">
@@ -15105,8 +15291,7 @@
             const batchName = batchNameInput.value.trim();
             const mentorName = mentorNameInput.value.trim();
             const workArea = document.getElementById('newBatchWorkArea').value;
-            const batchTitleInput = document.getElementById('newBatchTitle');
-            const batchTitle = batchTitleInput ? batchTitleInput.value.trim() : '';
+            const skillLearned = document.getElementById('newBatchSkill').value.trim();
 
             if (!batchName || !mentorName) {
                 showAdminFeedback('Please provide both a batch name and a mentor name.', 'warning');
@@ -15130,7 +15315,6 @@
                     if (response.status === 'success') {
                         batchNameInput.value = '';
                         mentorNameInput.value = '';
-                        if (batchTitleInput) batchTitleInput.value = '';
                         const skillInput = document.getElementById('newBatchSkill');
                         if (skillInput) skillInput.value = '';
                         loadBatches(); // Refresh the list of batches
@@ -15139,7 +15323,7 @@
                 .withFailureHandler(err => {
                     showAdminFeedback(`Error creating batch: ${err.message}`, 'error');
                 })
-                .createBatch(batchName, mentorName, '', '', workArea, 'Active', document.getElementById('newBatchSkill').value, batchTitle);
+                .createBatch(batchName, mentorName, '', '', workArea, 'Active', skillLearned, skillLearned);
         }
 
         /**
@@ -17356,7 +17540,8 @@
 
                             // Build the late/early dedicated column
                             let lateEarlyCol = '';
-                            if (isLegacy) {
+                            const hasLateEarlyRules = slot.late_after || slot.early_exit_before;
+                            if (isLegacy && !hasLateEarlyRules) {
                                 lateEarlyCol = `<div class="small text-muted fst-italic" style="font-size:0.72rem;"><i class="fas fa-info-circle"></i> No late/early rules</div>`;
                             } else {
                                 const lateVal = slot.late_after || '--';
@@ -17507,9 +17692,14 @@
             if (!found) return batchIdOrName;
             const name = found.name || found.BatchName || batchIdOrName;
             const title = found.title || '';
-            return title
-                ? `${name}<div style="font-size:0.75rem; color:#64748b; margin-top:2px;"><i class="fas fa-certificate me-1" style="color:#f59e0b;"></i><strong>${title}</strong></div>`
-                : name;
+            const count = found.studentCount !== undefined ? found.studentCount : 0;
+            
+            let html = `${name}`;
+            if (title) {
+                html += `<div style="font-size:0.75rem; color:#64748b; margin-top:2px;"><i class="fas fa-certificate me-1" style="color:#f59e0b;"></i><strong>${title}</strong></div>`;
+            }
+            html += `<div style="font-size:0.75rem; color:#0284c7; margin-top:2px;"><i class="fas fa-users me-1"></i><strong>${count} Students</strong></div>`;
+            return html;
         }
 
         function editSlotTimingAdmin(index) {
@@ -17555,8 +17745,7 @@
             document.getElementById('slotEnabled').checked = (String(slot.enabled) === 'true' || slot.enabled === true);
             const rfidChecked = (String(slot.rfid_enabled) === 'true' || slot.rfid_enabled === true);
             document.getElementById('slotRfidEnabled').checked = rfidChecked;
-            // Always show grace group so admin can edit grace values regardless of RFID toggle
-            document.getElementById('rfidGraceGroup').style.display = 'flex';
+            document.getElementById('rfidGraceGroup').style.display = rfidChecked ? 'flex' : 'none';
             document.getElementById('slotRfidLateGrace').value = (slot.rfid_grace_late != null && slot.rfid_grace_late !== '') ? String(slot.rfid_grace_late) : '';
             document.getElementById('slotRfidEarlyGrace').value = (slot.rfid_grace_early != null && slot.rfid_grace_early !== '') ? String(slot.rfid_grace_early) : '';
             document.getElementById('slotValidityDays').value = slot.validity_days || '';
@@ -17659,7 +17848,7 @@
             document.getElementById('slotEarlyTimePicker').disabled = false;
             document.getElementById('slotEnabled').checked = true;
             document.getElementById('slotRfidEnabled').checked = false;
-            document.getElementById('rfidGraceGroup').style.display = 'flex';
+            document.getElementById('rfidGraceGroup').style.display = 'none';
             document.getElementById('slotRfidLateGrace').value = '';
             document.getElementById('slotRfidEarlyGrace').value = '';
             document.getElementById('slotValidityDays').value = '';
@@ -17711,9 +17900,9 @@
                 .withSuccessHandler(res => {
                     hideAdminLoading();
                     if (res.status === 'success') {
-                        // If this is a legacy slot and we have extra timing data to persist,
-                        // also write a SLOT_SETTINGS BATCH entry for the late/early/grace values.
-                        if (isLegacySave && data.batch && (data.late_after || data.early_exit_before || data.rfid_grace_late || data.rfid_grace_early)) {
+                        // If this is a legacy slot, also write/update the SLOT_SETTINGS BATCH entry 
+                        // for the late/early/grace values to persist them.
+                        if (isLegacySave && data.batch) {
                             const extraData = {
                                 _source: 'SLOT_SETTINGS',
                                 _id: null,
@@ -18610,8 +18799,6 @@
             const workArea = document.getElementById('editBatchWorkArea').value;
             const status = document.getElementById('editBatchStatus').value;
             const skillLearned = document.getElementById('editBatchSkillLearned').value;
-            const certTitleEl = document.getElementById('editBatchCertTitle');
-            const batchTitle = certTitleEl ? certTitleEl.value.trim() : '';
 
             showAdminFeedback('Updating batch...', 'info');
 
@@ -18625,7 +18812,7 @@
                         showAdminFeedback('Update failed: ' + res.message, 'error');
                     }
                 })
-                .updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned, batchTitle);
+                .updateBatchDetails(id, name, mentor, project, description, workArea, status, skillLearned, skillLearned);
         }
 
         async function performDeleteBatch() {
@@ -18891,6 +19078,9 @@
                         </div>
                     </td>
                     <td data-label="Actions" class="text-end">
+                        <button class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold hover-shadow me-2" onclick="printRfidLabel('${s.registrationId}')">
+                            <i class="fas fa-print me-1"></i> PRINT
+                        </button>
                         <button class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-bold hover-shadow" onclick="revokeRfidTag('${s.registrationId}')">
                             <i class="fas fa-undo-alt me-1"></i> REVOKE
                         </button>
@@ -18898,6 +19088,292 @@
                 `;
                 tbody.appendChild(tr);
             });
+        }
+
+        function printRfidLabel(regId) {
+            // Find student details
+            const s = (typeof rfidAssignedData !== 'undefined' ? rfidAssignedData.find(x => x.registrationId === regId) : null) || 
+                      (typeof allStudentsData !== 'undefined' ? allStudentsData.find(x => x.registrationId === regId) : null);
+            if (!s) {
+                showAdminFeedback('Student details not found for printing label.', 'error');
+                return;
+            }
+            
+            // Populate modal preview elements
+            document.getElementById('rfidCardPreviewName').textContent = s.name || 'Student Name';
+            document.getElementById('rfidCardPreviewId').textContent = s.registrationId || '';
+            document.getElementById('rfidCardPreviewCollege').textContent = s.college || 'N/A';
+            document.getElementById('rfidCardPreviewDept').textContent = s.department || 'N/A';
+            document.getElementById('rfidCardPreviewBatch').textContent = s.batch || 'N/A';
+            document.getElementById('rfidCardPreviewTagUid').textContent = 'TAG UID: ' + (s.rfidTag || 'N/A');
+            
+            // Generate QR Code URL using quickchart.io
+            const qrUrl = `https://quickchart.io/qr?size=150&text=${encodeURIComponent(s.registrationId)}`;
+            document.getElementById('rfidCardPreviewQr').src = qrUrl;
+            
+            // Handle print button action
+            document.getElementById('rfidConfirmPrintBtn').onclick = function() {
+                closeModal('rfidPrintLabelModal');
+                
+                // Open printing window with CR80 sized card
+                const printWindow = window.open('', '_blank', 'width=600,height=400');
+                if (!printWindow) {
+                    showAdminFeedback('Pop-up blocked! Please allow pop-ups to print card labels.', 'warning');
+                    return;
+                }
+                
+                printWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>RFID Card Label - ${s.name}</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;700;800&display=swap" rel="stylesheet">
+                        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+                        <style>
+                            body {
+                                margin: 0;
+                                padding: 0;
+                                background: white;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                height: 100vh;
+                                font-family: 'Poppins', sans-serif;
+                            }
+                            
+                            /* CR80 Card Size CSS: 85.6mm x 54mm */
+                            .print-card {
+                                width: 85.6mm;
+                                height: 54mm;
+                                background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+                                border-radius: 12px;
+                                position: relative;
+                                padding: 18px;
+                                box-shadow: none;
+                                color: white;
+                                box-sizing: border-box;
+                                -webkit-print-color-adjust: exact;
+                                print-color-adjust: exact;
+                                overflow: hidden;
+                            }
+                            
+                            .card-accent {
+                                position: absolute;
+                                top: 0;
+                                right: 0;
+                                bottom: 0;
+                                left: 0;
+                                background: radial-gradient(circle at 80% 20%, rgba(255,255,255,0.05) 0%, transparent 50%);
+                                border-radius: 12px;
+                                pointer-events: none;
+                            }
+                            
+                            .header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: flex-start;
+                                margin-bottom: 12px;
+                            }
+                            
+                            .header-title {
+                                font-size: 0.85rem;
+                                font-weight: 800;
+                                letter-spacing: 1.5px;
+                                text-transform: uppercase;
+                                color: #4fc3f7;
+                            }
+                            
+                            .header-subtitle {
+                                font-size: 0.6rem;
+                                color: #b0bec5;
+                                font-weight: 500;
+                                letter-spacing: 0.5px;
+                            }
+                            
+                            .badge {
+                                background: rgba(79, 195, 247, 0.2);
+                                color: #4fc3f7;
+                                padding: 3px 10px;
+                                border-radius: 20px;
+                                font-size: 0.55rem;
+                                font-weight: 800;
+                                text-transform: uppercase;
+                                border: 1px solid rgba(79, 195, 247, 0.3);
+                            }
+                            
+                            .main-content {
+                                display: flex;
+                                gap: 15px;
+                                margin-top: 15px;
+                            }
+                            
+                            .qr-container {
+                                background: white;
+                                padding: 6px;
+                                border-radius: 8px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                            }
+                            
+                            .qr-code {
+                                width: 100px;
+                                height: 100px;
+                            }
+                            
+                            .details-container {
+                                display: flex;
+                                flex-direction: column;
+                                justify-content: center;
+                                flex: 1;
+                            }
+                            
+                            .student-name {
+                                font-size: 1.05rem;
+                                font-weight: 700;
+                                line-height: 1.2;
+                                margin-bottom: 4px;
+                                overflow: hidden;
+                                text-overflow: ellipsis;
+                                white-space: nowrap;
+                                max-width: 210px;
+                            }
+                            
+                            .student-id {
+                                font-size: 0.72rem;
+                                color: #b0bec5;
+                                font-family: monospace;
+                                letter-spacing: 0.5px;
+                                margin-bottom: 6px;
+                            }
+                            
+                            .detail-items {
+                                border-top: 1px solid rgba(255,255,255,0.1);
+                                padding-top: 6px;
+                                display: flex;
+                                flex-direction: column;
+                                gap: 2px;
+                            }
+                            
+                            .detail-row {
+                                font-size: 0.6rem;
+                                color: #b0bec5;
+                                font-weight: 500;
+                            }
+                            
+                            .detail-row i {
+                                width: 12px;
+                                color: #4fc3f7;
+                                margin-right: 4px;
+                            }
+                            
+                            .footer {
+                                position: absolute;
+                                bottom: 12px;
+                                left: 18px;
+                                right: 18px;
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                border-top: 1px dashed rgba(255,255,255,0.15);
+                                padding-top: 6px;
+                                font-size: 0.55rem;
+                                color: #90a4ae;
+                            }
+                            
+                            .nfc-enabled {
+                                font-weight: 600;
+                                color: #81c784;
+                            }
+                            
+                            /* Printing styles */
+                            @media print {
+                                body, html {
+                                    width: 85.6mm;
+                                    height: 54mm;
+                                }
+                                body {
+                                    margin: 0;
+                                    padding: 0;
+                                    display: block;
+                                }
+                                .print-card {
+                                    border: none;
+                                    border-radius: 0;
+                                    box-shadow: none;
+                                    width: 85.6mm;
+                                    height: 54mm;
+                                }
+                                @page {
+                                    size: 85.6mm 54mm;
+                                    margin: 0;
+                                }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="print-card">
+                            <div class="card-accent"></div>
+                            
+                            <!-- Header -->
+                            <div class="header">
+                                <div>
+                                    <div class="header-title">RFID ACCESS CARD</div>
+                                    <div class="header-subtitle">INTERNSHIP HUB</div>
+                                </div>
+                                <div class="badge">INTERN</div>
+                            </div>
+                            
+                            <!-- Main content -->
+                            <div class="main-content">
+                                <div class="qr-container">
+                                    <img class="qr-code" src="${qrUrl}">
+                                </div>
+                                
+                                <div class="details-container">
+                                    <div class="student-name">${s.name || 'Student Name'}</div>
+                                    <div class="student-id">${s.registrationId || ''}</div>
+                                    
+                                    <div class="detail-items">
+                                        <div class="detail-row">
+                                            <i class="fas fa-university"></i>
+                                            <span>${s.college || 'N/A'}</span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <i class="fas fa-briefcase"></i>
+                                            <span>${s.department || 'N/A'}</span>
+                                        </div>
+                                        <div class="detail-row">
+                                            <i class="fas fa-layer-group"></i>
+                                            <span>${s.batch || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Footer -->
+                            <div class="footer">
+                                <div>
+                                    <i class="fas fa-id-card"></i> <span>TAG UID: ${s.rfidTag || 'N/A'}</span>
+                                </div>
+                                <div class="nfc-enabled">
+                                    <i class="fas fa-wifi"></i> NFC ENABLED
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `);
+                
+                printWindow.document.close();
+                // Wait for resource loading
+                setTimeout(() => {
+                    printWindow.focus();
+                    printWindow.print();
+                    printWindow.close();
+                }, 800);
+            };
+            
+            openModal('rfidPrintLabelModal');
         }
 
         function renderRfidCompletedTable(students) {
@@ -22843,6 +23319,175 @@
                 }
             });
         }
+
+        function initWarningNoticeSection() {
+            if (!allStudentsData || allStudentsData.length === 0) {
+                showAdminLoading();
+                google.script.run
+                    .withSuccessHandler(data => {
+                        hideAdminLoading();
+                        allStudentsData = data;
+                        populateWarningBatchDropdown();
+                        filterWarningStudents();
+                    })
+                    .withFailureHandler(err => {
+                        hideAdminLoading();
+                        showAdminFeedback('Failed to load students: ' + err.message, 'error');
+                    })
+                    .getAllStudents();
+            } else {
+                populateWarningBatchDropdown();
+                filterWarningStudents();
+            }
+        }
+
+        function populateWarningBatchDropdown() {
+            const batchSelect = document.getElementById('warnFilterBatch');
+            if (!batchSelect) return;
+            
+            // Get unique batches
+            const batches = [...new Set(allStudentsData.map(s => s.Batch).filter(Boolean))].sort();
+            batchSelect.innerHTML = '<option value="">All Batches</option>';
+            batches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.textContent = b;
+                batchSelect.appendChild(opt);
+            });
+        }
+
+        function filterWarningStudents() {
+            const tableBody = document.getElementById('warnStudentTableBody');
+            if (!tableBody) return;
+
+            const selectedBatch = document.getElementById('warnFilterBatch').value;
+            const searchKey = document.getElementById('warnSearchKey').value.toLowerCase().trim();
+
+            const filtered = allStudentsData.filter(s => {
+                const matchesBatch = !selectedBatch || s.Batch === selectedBatch;
+                
+                const fullName = ((s.FirstName || '') + ' ' + (s.MiddleName || '') + ' ' + (s.LastName || '')).toLowerCase();
+                const regId = String(s.RegistrationID || '').toLowerCase();
+                const email = String(s.GmailID || '').toLowerCase();
+                
+                const matchesSearch = !searchKey || 
+                    fullName.includes(searchKey) || 
+                    regId.includes(searchKey) || 
+                    email.includes(searchKey);
+
+                return matchesBatch && matchesSearch;
+            });
+
+            tableBody.innerHTML = '';
+            
+            if (filtered.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center p-4 text-muted">No students found matching filters.</td></tr>';
+                updateWarnSelectedCount();
+                return;
+            }
+
+            filtered.forEach(s => {
+                const tr = document.createElement('tr');
+                
+                const tdCheck = document.createElement('td');
+                tdCheck.className = 'text-center';
+                const chk = document.createElement('input');
+                chk.type = 'checkbox';
+                chk.className = 'form-check-input warn-student-checkbox border-slate-300';
+                chk.value = s.RegistrationID;
+                chk.onchange = updateWarnSelectedCount;
+                tdCheck.appendChild(chk);
+                tr.appendChild(tdCheck);
+
+                const tdId = document.createElement('td');
+                tdId.className = 'font-semibold';
+                tdId.textContent = s.RegistrationID;
+                tr.appendChild(tdId);
+
+                const tdName = document.createElement('td');
+                tdName.textContent = (s.FirstName || '') + ' ' + (s.MiddleName || '') + ' ' + (s.LastName || '');
+                tr.appendChild(tdName);
+
+                const tdEmail = document.createElement('td');
+                tdEmail.textContent = s.GmailID || 'N/A';
+                tr.appendChild(tdEmail);
+
+                const tdBatch = document.createElement('td');
+                tdBatch.textContent = s.Batch || 'N/A';
+                tr.appendChild(tdBatch);
+
+                const tdStatus = document.createElement('td');
+                const badge = document.createElement('span');
+                const statusStr = String(s.ApplicationStatus || s.Status || 'Active').toLowerCase();
+                if (statusStr.includes('complete')) {
+                    badge.className = 'badge bg-success';
+                } else if (statusStr.includes('reject') || statusStr.includes('terminate')) {
+                    badge.className = 'badge bg-danger';
+                } else {
+                    badge.className = 'badge bg-info text-dark';
+                }
+                badge.textContent = s.ApplicationStatus || s.Status || 'Active';
+                tdStatus.appendChild(badge);
+                tr.appendChild(tdStatus);
+
+                tableBody.appendChild(tr);
+            });
+
+            // Reset select all checkbox
+            const selectAllChk = document.getElementById('warnSelectAll');
+            if (selectAllChk) selectAllChk.checked = false;
+
+            updateWarnSelectedCount();
+        }
+
+        function toggleSelectAllWarnings(master) {
+            document.querySelectorAll('.warn-student-checkbox').forEach(chk => {
+                chk.checked = master.checked;
+            });
+            updateWarnSelectedCount();
+        }
+
+        function updateWarnSelectedCount() {
+            const checked = document.querySelectorAll('.warn-student-checkbox:checked').length;
+            const countEl = document.getElementById('warnSelectedCount');
+            if (countEl) {
+                countEl.textContent = `${checked} student(s) selected`;
+            }
+        }
+
+        function sendBatchWarningNotices() {
+            const checkedBoxes = document.querySelectorAll('.warn-student-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                showAdminFeedback('Please select at least one student to send warnings.', 'warning');
+                return;
+            }
+
+            const regIds = Array.from(checkedBoxes).map(chk => chk.value);
+            const customReason = document.getElementById('warnCustomReason').value;
+
+            if (!confirm(`Are you sure you want to generate and send Warning Notices to ${regIds.length} student(s)?`)) {
+                return;
+            }
+
+            showAdminLoading();
+            google.script.run
+                .withSuccessHandler(res => {
+                    hideAdminLoading();
+                    if (res.status === 'success') {
+                        showAdminFeedback(res.message, 'success');
+                        document.getElementById('warnCustomReason').value = '';
+                        filterWarningStudents();
+                    } else {
+                        showAdminFeedback('Error: ' + res.message, 'error');
+                    }
+                })
+                .withFailureHandler(err => {
+                    hideAdminLoading();
+                    showAdminFeedback('Failure sending warnings: ' + err.message, 'error');
+                })
+                .sendBatchWarning(regIds, customReason);
+        }
+
         (function() {
             const startPicker = document.getElementById('slotStartTimePicker');
             if (startPicker) {
@@ -22864,6 +23509,16 @@
                         let [h, m] = val.split(':').map(Number);
                         h = (h - 1 + 24) % 24;
                         document.getElementById('slotEarlyTimePicker').value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                    }
+                });
+            }
+
+            const rfidToggle = document.getElementById('slotRfidEnabled');
+            if (rfidToggle) {
+                rfidToggle.addEventListener('change', function() {
+                    const group = document.getElementById('rfidGraceGroup');
+                    if (group) {
+                        group.style.display = this.checked ? 'flex' : 'none';
                     }
                 });
             }

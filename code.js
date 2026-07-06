@@ -1883,7 +1883,17 @@ function appendObjectToSheet(sheet, obj) {
     headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   }
 
-  const row = headers.map(header => obj[header] !== undefined ? obj[header] : '');
+  // Robust case-insensitive and space/underscore-insensitive key mapping
+  const normKey = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+  const objKeysNormalized = {};
+  for (let key in obj) {
+    objKeysNormalized[normKey(key)] = obj[key];
+  }
+
+  const row = headers.map(header => {
+    const normHeader = normKey(header);
+    return objKeysNormalized[normHeader] !== undefined ? objKeysNormalized[normHeader] : '';
+  });
   sheet.appendRow(row);
   SpreadsheetApp.flush();
 }
@@ -1894,7 +1904,11 @@ function appendObjectToSheet(sheet, obj) {
 function updateObjectInSheet(sheet, idColName, idValue, updateData) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
-  const idColIdx = headers.indexOf(idColName);
+  
+  const normKey = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+  const normalizedHeaders = headers.map(h => normKey(h));
+  
+  const idColIdx = normalizedHeaders.indexOf(normKey(idColName));
 
   if (idColIdx === -1) throw new Error("ID Column not found: " + idColName);
 
@@ -1902,7 +1916,7 @@ function updateObjectInSheet(sheet, idColName, idValue, updateData) {
     if (String(data[i][idColIdx]).trim() === String(idValue).trim()) {
       const rowNum = i + 1;
       for (const key in updateData) {
-        const colIdx = headers.indexOf(key);
+        const colIdx = normalizedHeaders.indexOf(normKey(key));
         if (colIdx !== -1) {
           sheet.getRange(rowNum, colIdx + 1).setValue(updateData[key]);
         }
@@ -5737,12 +5751,12 @@ function studentLogin(regId, mobile) {
     }
 
     if (endDate) {
-      const gpAreas = getApprovedGracePeriodAreas(student.RegistrationID);
-      const hasGP = gpAreas.length > 0;
-      if (today > endDate && !hasGP) {
+      const limitDate = new Date(endDate);
+      limitDate.setDate(limitDate.getDate() + 31); // 30 days hard limit
+      if (today >= limitDate) {
         return {
           status: "error",
-          message: "Your internship period ended on " + Utilities.formatDate(endDate, Session.getScriptTimeZone() || 'Asia/Kolkata', "yyyy-MM-dd") + " and your portal access has concluded. Please contact supervisor for extension."
+          message: "Your student portal access has expired (30-day limit ended)."
         };
       }
     }
@@ -5777,7 +5791,9 @@ function studentLogin(regId, mobile) {
         },
         permissions: {
           attendance: (student.AttendanceAccess !== false && student.AttendanceAccess !== 'FALSE' && String(student.AttendanceAccess).trim().toUpperCase() !== 'FALSE') || hasAttendanceGP,
-          diary: (student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE') || hasDiaryGP
+          diary: (student.DiaryAccess !== false && student.DiaryAccess !== 'FALSE' && String(student.DiaryAccess).trim().toUpperCase() !== 'FALSE') || hasDiaryGP,
+          tasks: gpAreas.includes('tasks'),
+          projects: gpAreas.includes('projects')
         }
       }
     };
@@ -6152,7 +6168,12 @@ function getApplications(status) {
     name: getStudentFullName_(app),
     gmail: app.GmailID,
     status: app.ApplicationStatus,
-    timestamp: app.Timestamp
+    timestamp: app.Timestamp,
+    college: app.CollegeName || '',
+    department: app.Department || '',
+    internshipStart: app.InternshipStartDate || '',
+    internshipEnd: app.InternshipEndDate || '',
+    batch: app.Batch || ''
   }));
 }
 
@@ -6253,12 +6274,16 @@ function updateApplicationStatus(regIds, newStatus) {
   const mainSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
   if (!mainSheet) return { status: 'error', message: 'Registrations data unavailable.' };
 
+  const isTargetOptOut = false; // We treat Opt-out as archived now
   const isTargetArchived = (newStatus.toLowerCase() === 'closed' || newStatus.toLowerCase() === 'opt-out' || newStatus.toLowerCase() === 'optout');
   
   let updatedCount = 0;
   let results = [];
 
   regIds.forEach(regId => {
+    const rId = String(regId || "").trim().toUpperCase();
+    if (!rId) return;
+
     // Check if the student is currently in 'Closed and Opt-out' archive
     const closedSheet = getSheet('Closed and Opt-out');
     let isCurrentlyArchived = false;
@@ -6271,7 +6296,7 @@ function updateApplicationStatus(regIds, newStatus) {
       const closedRegIdCol = closedHeaders.indexOf("RegistrationID");
       if (closedRegIdCol !== -1) {
         for (let i = 1; i < closedData.length; i++) {
-          if (String(closedData[i][closedRegIdCol]) === String(regId)) {
+          if (String(closedData[i][closedRegIdCol]).trim().toUpperCase() === rId) {
             isCurrentlyArchived = true;
             archivedRowIdx = i + 1;
             archivedDataRow = closedData[i];
@@ -6282,6 +6307,7 @@ function updateApplicationStatus(regIds, newStatus) {
     }
 
     if (isTargetArchived) {
+      // Closed/Opt-out students: Archive
       if (isCurrentlyArchived) {
         // Just update status in the archive sheet
         const closedHeaders = closedSheet.getDataRange().getValues()[0];
@@ -6292,6 +6318,7 @@ function updateApplicationStatus(regIds, newStatus) {
         
         // Destroy detailed data, folders, and generated files
         adminDeleteFolder(regId);
+        clearStudentRelatedRecords(regId);
         
         updatedCount++;
         results.push({ regId: regId, status: 'success', message: `Status updated to ${newStatus} in archive and detailed files destroyed.` });
@@ -6356,6 +6383,7 @@ function updateApplicationStatus(regIds, newStatus) {
         
         // Destroy detailed data, folders, and generated files
         adminDeleteFolder(regId);
+        clearStudentRelatedRecords(regId);
         
         updatedCount++;
         results.push({ regId: regId, status: 'success', message: `Status updated to ${newStatus}, archived, and detailed files destroyed.` });
@@ -9621,8 +9649,9 @@ function getStudentAttendance(registrationId) {
     end.setHours(0, 0, 0, 0);
 
     let dayCount = 1;
+    let safety = 0;
 
-    while (current <= end) {
+    while (current <= end && safety < 10000) {
       const dISO = formatDateISO(current);
       const dDisplay = formatDate(current);
       // Select the "best" record for the day — exclude Denied records, prefer OutTime
@@ -9761,6 +9790,7 @@ function getStudentAttendance(registrationId) {
 
       if (!isSunday) dayCount++;
       current.setDate(current.getDate() + 1);
+      safety++;
     }
 
     const activeDays = summary.presentCounter + summary.medicalCounter + (summary.emergencyCounter || 0);
@@ -10590,7 +10620,7 @@ function updateBatchDetails(id, name, mentor, project, description, workArea, st
         const oldName = data[i][nameCol];
 
         if (nameCol !== -1) sheet.getRange(i + 1, nameCol + 1).setValue(name);
-        if (titleCol !== -1) sheet.getRange(i + 1, titleCol + 1).setValue(batchTitle || '');
+        if (titleCol !== -1) sheet.getRange(i + 1, titleCol + 1).setValue(skillLearned || batchTitle || '');
         if (mentorCol !== -1) sheet.getRange(i + 1, mentorCol + 1).setValue(mentor);
         if (projCol !== -1) sheet.getRange(i + 1, projCol + 1).setValue(project);
         if (descCol !== -1) sheet.getRange(i + 1, descCol + 1).setValue(description || '');
@@ -10703,7 +10733,7 @@ function createBatch(batchName, mentorName, projectName, description, workArea, 
 
     setVal("BatchID", newId);
     setVal("BatchName", batchName);
-    setVal("BatchTitle", batchTitle || '');
+    setVal("BatchTitle", skillLearned || batchTitle || '');
     setVal("Mentor", mentorName);
     setVal("Project", projectName || '');
     setVal("Description", description || '');
@@ -12562,6 +12592,7 @@ function submitUnifiedStudentRequest(registrationId, requestType, date, reason, 
       StudentName: studentName,
       RequestType: requestType,
       TargetDate: date,
+      TargetTime: details.inTime || details.outTime || '',
       Reason: description,
       AttachmentUrl: attachmentUrl,
       OTP: otp,
@@ -12973,9 +13004,28 @@ function processUnifiedAdminRequest(id, type, action, value) {
                 const regCol = headers.indexOf('RegistrationID');
                 const dateCol = headers.indexOf('TargetDate');
                 if (regCol !== -1 && dateCol !== -1) {
-                  const actTypeCol = headers.indexOf('ActionType');
+                  const actTypeCol = headers.indexOf('ActionType') !== -1 ? headers.indexOf('ActionType') : headers.indexOf('RequestType');
                   const actType = actTypeCol !== -1 ? data[i][actTypeCol] : 'Correction';
-                  updateAttendanceRecord(data[i][regCol], formatDate(data[i][dateCol]), actType === 'Correction' ? 'Present' : actType, 'Admin verified OTP');
+                  
+                  let targetTime = '';
+                  const tTimeCol = headers.indexOf('TargetTime');
+                  if (tTimeCol !== -1) targetTime = data[i][tTimeCol];
+                  
+                  // If targetTime not found in current sheet, check StudentRequests
+                  if (!targetTime) {
+                    try {
+                      const srSheet = getSheet(SHEET_NAMES.STUDENT_REQUESTS);
+                      if (srSheet) {
+                        const srData = getSheetDataAsObjects(srSheet);
+                        const srRow = srData.find(r => r.RequestID === data[i].ID || r.RequestID === data[i].RequestID);
+                        if (srRow) {
+                          targetTime = srRow.TargetTime;
+                        }
+                      }
+                    } catch(e) {}
+                  }
+                  
+                  applyApprovedRequest(data[i][regCol], formatDate(data[i][dateCol]), actType, targetTime);
                 }
                 return 'otp_matched';
               } else {
@@ -13350,19 +13400,38 @@ function processCorrectionRequestApproval(requestId, action) {
       const date = (data[i][dateCol] instanceof Date) ? formatDate(data[i][dateCol]) : data[i][dateCol];
 
       if (action === 'Approve') {
-        const isEarlyExit = type.toUpperCase() === 'EARLY_EXIT' || type.toUpperCase() === 'EARLY EXIT';
+        const isEarlyExit = type.toUpperCase() === 'EARLY_EXIT' || type.toUpperCase() === 'EARLY EXIT' || type === 'Check-out Early';
+        const isCorrection = type === 'Correction' || type === 'Check-in Manual' || type === 'LATE_CHECKIN' || type === 'TodayMark';
 
-        if (type === 'Correction' || isEarlyExit) {
+        if (isCorrection || isEarlyExit) {
           const todayNode = new Date();
           todayNode.setHours(0, 0, 0, 0);
           const parsedTargetDate = new Date(date);
 
           if (parsedTargetDate <= todayNode || isEarlyExit) {
             sheet.getRange(i + 1, statusCol + 1).setValue('Approved');
-            // Only update attendance record (Present) for corrections, not early exits.
-            if (type === 'Correction') {
-              updateAttendanceRecord(regId, date, 'Present', 'Correction Approved');
+            
+            // Get TargetTime
+            let targetTime = '';
+            const tTimeCol = data[0].indexOf("TargetTime");
+            if (tTimeCol !== -1) targetTime = data[i][tTimeCol];
+            
+            // If targetTime not found in current sheet, check StudentRequests
+            if (!targetTime) {
+              try {
+                const srSheet = getSheet(SHEET_NAMES.STUDENT_REQUESTS);
+                if (srSheet) {
+                  const srData = getSheetDataAsObjects(srSheet);
+                  const srRow = srData.find(r => r.RequestID === requestId);
+                  if (srRow) {
+                    targetTime = srRow.TargetTime;
+                  }
+                }
+              } catch(e) {}
             }
+            
+            applyApprovedRequest(regId, date, type, targetTime);
+            
             updateStudentRequestStatus_(requestId, 'Approved', 'Approved by Admin');
             return { status: 'success', message: `Approved. Status updated accurately for ${type}.` };
           }
@@ -13381,7 +13450,7 @@ function processCorrectionRequestApproval(requestId, action) {
           return { status: 'success', message: 'Approved. Awaiting OTP Verification by student.' };
         } else if (type === 'TodayMark') {
           sheet.getRange(i + 1, statusCol + 1).setValue('Approved');
-          updateAttendanceRecord(regId, date, 'Present', 'Approved by Admin');
+          applyApprovedRequest(regId, date, 'TodayMark', '');
           updateStudentRequestStatus_(requestId, 'Approved', 'Approved by Admin');
           return { status: 'success', message: 'Request approved and attendance updated.' };
         } else {
@@ -13826,6 +13895,7 @@ function getStudentEmail(regId) {
 
 function getAllStudents() {
   try {
+    cleanOptOutStudents();
     updateExpiredApprovedStudentsStatus();
     const sheet = getSheet(SHEET_NAMES.REGISTRATIONS);
     const mainData = getSheetDataAsObjects(sheet) || [];
@@ -14003,6 +14073,271 @@ function getAllStudents() {
   }
 }
 
+function cleanCorruptRows() {
+  const sheets = [SHEET_NAMES.REGISTRATIONS, 'Closed and Opt-out'];
+  sheets.forEach(sheetName => {
+    try {
+      const sheet = getSheet(sheetName);
+      if (!sheet) return;
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return;
+      
+      const headers = data[0];
+      const regIdIdx = headers.indexOf("RegistrationID");
+      const firstNameIdx = headers.indexOf("FirstName");
+      const statusIdx = headers.indexOf("ApplicationStatus");
+      
+      let deletedCount = 0;
+      for (let i = data.length - 1; i >= 1; i--) {
+        const row = data[i];
+        const regId = regIdIdx !== -1 ? String(row[regIdIdx] || '').trim() : '';
+        const firstName = firstNameIdx !== -1 ? String(row[firstNameIdx] || '').trim() : '';
+        const status = statusIdx !== -1 ? String(row[statusIdx] || '').trim() : '';
+        
+        const isUndefinedRegId = !regId || regId.toLowerCase() === 'undefined';
+        const isDefaultName = !firstName || firstName.toLowerCase() === 'student';
+        const isRowEmpty = row.every(val => !val || String(val).trim() === '');
+        
+        if (isRowEmpty) {
+          sheet.deleteRow(i + 1);
+          deletedCount++;
+          continue;
+        }
+        
+        // Delete if registration ID is undefined/empty or if default name with no registration details
+        if (isUndefinedRegId || (isDefaultName && !regId)) {
+          sheet.deleteRow(i + 1);
+          deletedCount++;
+        }
+      }
+      
+      if (deletedCount > 0) {
+        executionCache.delete(sheetName);
+        Logger.log(`Cleaned up ${deletedCount} corrupt/undefined rows from ${sheetName}`);
+      }
+    } catch (e) {
+      Logger.log(`Error cleaning corrupt rows in ${sheetName}: ` + e.toString());
+    }
+  });
+}
+
+function clearStudentRelatedRecords(regId) {
+  const rId = String(regId || "").trim().toUpperCase();
+  if (!rId) return;
+
+  const sheetsToClear = [
+    { name: SHEET_NAMES.ATTENDANCE, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.TASKS, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.PROJECTS, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.STUDENT_DIARY, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.GENERATED_DOCUMENTS, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.FILE_MANAGER, colName: "StudentRegistrationID" },
+    { name: SHEET_NAMES.STUDENT_REQUESTS, colName: "RegistrationID" },
+    { name: SHEET_NAMES.ATTENDANCE_REQUESTS, colName: "RegistrationID" }
+  ];
+
+  sheetsToClear.forEach(sConfig => {
+    try {
+      const sheet = getSheet(sConfig.name);
+      if (sheet) {
+        const data = sheet.getDataRange().getValues();
+        if (data.length > 1) {
+          const headers = data[0];
+          const colIdx = headers.indexOf(sConfig.colName);
+          if (colIdx !== -1) {
+            let deletedCount = 0;
+            for (let i = data.length - 1; i >= 1; i--) {
+              if (String(data[i][colIdx]).trim().toUpperCase() === rId) {
+                sheet.deleteRow(i + 1);
+                deletedCount++;
+              }
+            }
+            if (deletedCount > 0) {
+              executionCache.delete(sConfig.name);
+              Logger.log(`Cleared ${deletedCount} rows for ${rId} from ${sConfig.name}`);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log(`Error clearing ${sConfig.name} for ${rId}: ` + e.toString());
+    }
+  });
+}
+
+function cleanOptOutStudents() {
+  const debugLog = [];
+  debugLog.push(["Timestamp", "Message"]);
+  
+  const logDebug = (msg) => {
+    debugLog.push([new Date().toISOString(), msg]);
+    Logger.log(msg);
+  };
+
+  try {
+    logDebug("Starting cleanOptOutStudents");
+    const ss = getSpreadsheet();
+    logDebug("Spreadsheet opened. ID: " + ss.getId() + " Name: " + ss.getName());
+    
+    // First, run general corrupt/undefined rows clean
+    cleanCorruptRows();
+    
+    // 1. Clean Registrations Sheet - Delete opted-out or invalid rows
+    const regSheet = getSheet(SHEET_NAMES.REGISTRATIONS);
+    if (regSheet) {
+      logDebug("Registrations sheet found: " + regSheet.getName());
+      const regData = regSheet.getDataRange().getValues();
+      logDebug("Registrations total rows: " + regData.length);
+      if (regData.length > 1) {
+        const headers = regData[0];
+        const regIdIdx = headers.indexOf("RegistrationID");
+        const statusIdx = headers.indexOf("ApplicationStatus");
+        logDebug("Headers: " + JSON.stringify(headers));
+        logDebug("regIdIdx: " + regIdIdx + ", statusIdx: " + statusIdx);
+        
+        let deletedFromReg = 0;
+        // Loop backwards to preserve indices
+        for (let i = regData.length - 1; i >= 1; i--) {
+          const regId = regIdIdx !== -1 ? regData[i][regIdIdx] : null;
+          const status = statusIdx !== -1 ? String(regData[i][statusIdx] || '').trim().toLowerCase() : '';
+          const isOptOut = (status === 'opt-out' || status === 'optout');
+          const isUndefinedRegId = !regId || String(regId).trim() === '' || String(regId).toLowerCase() === 'undefined';
+          const isRowEmpty = regData[i].every(val => !val || String(val).trim() === '');
+          
+          if (isRowEmpty) continue;
+          
+          if (isOptOut || isUndefinedRegId) {
+            logDebug(`Deleting row ${i+1}: RegId='${regId}', Status='${status}', isOptOut=${isOptOut}, isUndefinedRegId=${isUndefinedRegId}`);
+            if (regId && String(regId).toLowerCase() !== 'undefined' && String(regId).trim() !== '') {
+              // Ensure they are archived in 'Closed and Opt-out' if they were Opt-out and not already archived
+              if (isOptOut) {
+                try {
+                  const closedSheetObj = getSheet('Closed and Opt-out');
+                  let alreadyArchived = false;
+                  if (closedSheetObj) {
+                    const closedData = closedSheetObj.getDataRange().getValues();
+                    if (closedData.length > 1) {
+                      const closedRegIdCol = closedData[0].indexOf("RegistrationID");
+                      if (closedRegIdCol !== -1) {
+                        alreadyArchived = closedData.some(row => String(row[closedRegIdCol]).trim() === String(regId).trim());
+                      }
+                    }
+                  }
+                  
+                  if (!alreadyArchived) {
+                    // Copy to closed sheet
+                    let rowValues = [...regData[i]];
+                    // Make sure status is stored correctly
+                    if (statusIdx !== -1) rowValues[statusIdx] = "Opt-out";
+                    const mainStatusCol2 = headers.indexOf("Status");
+                    if (mainStatusCol2 !== -1) rowValues[mainStatusCol2] = "Opt-out";
+                    
+                    // Clear document links and RFID tag ID in the archived row values
+                    const docColsToClear = [
+                      "ApplicationPdfId", "OfferLetterPdfId", "JoiningLetterPdfId", 
+                      "ProfilePhotoUrl", "CertificateLink", "BonafideUrl", 
+                      "DeclarationUrl", "CollegeIdUrl", "OtherUrl", "RFID_TagID"
+                    ];
+                    docColsToClear.forEach(colName => {
+                      const colIdx = headers.indexOf(colName);
+                      if (colIdx !== -1 && colIdx < rowValues.length) {
+                        rowValues[colIdx] = "";
+                      }
+                    });
+                    
+                    let targetClosedSheet = closedSheetObj;
+                    if (!targetClosedSheet) {
+                      const ss = SpreadsheetApp.getActiveSpreadsheet();
+                      targetClosedSheet = ss.insertSheet('Closed and Opt-out');
+                      targetClosedSheet.appendRow(headers);
+                    }
+                    targetClosedSheet.appendRow(rowValues);
+                    logDebug(`Archived opted-out student ${regId} to Closed and Opt-out sheet.`);
+                  }
+                } catch (archiveErr) {
+                  logDebug("Error archiving opted-out student: " + archiveErr.toString());
+                }
+              }
+              
+              try { adminDeleteFolder(regId); } catch (e) { logDebug("Error deleting folders for " + regId + ": " + e); }
+              try { clearStudentRelatedRecords(regId); } catch (e) { logDebug("Error clearing related records for " + regId + ": " + e); }
+            }
+            regSheet.deleteRow(i + 1);
+            deletedFromReg++;
+          }
+        }
+        if (deletedFromReg > 0) {
+          executionCache.delete(SHEET_NAMES.REGISTRATIONS);
+          logDebug(`Cleaned up ${deletedFromReg} opted-out/invalid rows from Registrations sheet.`);
+        }
+      }
+    } else {
+      logDebug("Registrations sheet NOT found!");
+    }
+    
+    // 2. Clean Closed and Opt-out Sheet - ONLY delete undefined registration IDs, NOT actual Opt-out rows!
+    const closedSheet = getSheet('Closed and Opt-out');
+    if (closedSheet) {
+      logDebug("Closed sheet found: " + closedSheet.getName());
+      const closedData = closedSheet.getDataRange().getValues();
+      logDebug("Closed total rows: " + closedData.length);
+      if (closedData.length > 1) {
+        const headers = closedData[0];
+        const regIdIdx = headers.indexOf("RegistrationID");
+        const statusIdx = headers.indexOf("ApplicationStatus");
+        logDebug("Headers: " + JSON.stringify(headers));
+        logDebug("regIdIdx: " + regIdIdx + ", statusIdx: " + statusIdx);
+        
+        let deletedFromClosed = 0;
+        // Loop backwards to preserve indices
+        for (let i = closedData.length - 1; i >= 1; i--) {
+          const regId = regIdIdx !== -1 ? closedData[i][regIdIdx] : null;
+          const isUndefinedRegId = !regId || String(regId).trim() === '' || String(regId).toLowerCase() === 'undefined';
+          const isRowEmpty = closedData[i].every(val => !val || String(val).trim() === '');
+          
+          if (isRowEmpty) continue;
+          
+          if (isUndefinedRegId) {
+            logDebug(`Deleting closed row ${i+1}: RegId='${regId}', isUndefinedRegId=${isUndefinedRegId}`);
+            closedSheet.deleteRow(i + 1);
+            deletedFromClosed++;
+          }
+        }
+        if (deletedFromClosed > 0) {
+          executionCache.delete('Closed and Opt-out');
+          logDebug(`Cleaned up ${deletedFromClosed} invalid rows from Closed and Opt-out sheet.`);
+        }
+      }
+    } else {
+      logDebug("Closed sheet NOT found!");
+    }
+    
+    // Sync sheets
+    syncStudentCategoriesToSheets();
+    logDebug("Sync completed successfully.");
+    
+  } catch (e) {
+    logDebug("Error: " + e.toString());
+  }
+
+  // Write debug log to a sheet named "Cleanup Debug Log"
+  try {
+    const ss = getSpreadsheet();
+    let debugSheet = ss.getSheetByName("Cleanup Debug Log");
+    if (!debugSheet) {
+      debugSheet = ss.insertSheet("Cleanup Debug Log");
+    } else {
+      debugSheet.clearContents();
+      debugSheet.clearFormats();
+    }
+    debugSheet.getRange(1, 1, debugLog.length, debugLog[0].length).setValues(debugLog);
+    debugSheet.getRange(1, 1, 1, debugLog[0].length).setBackground('#f3f4f6').setFontWeight('bold');
+    debugSheet.autoResizeColumns(1, debugLog[0].length);
+  } catch(e) {
+    Logger.log("Failed to write debug sheet: " + e.toString());
+  }
+}
+
 // Obsolete duplicate block removed
 
 // =================================================================================
@@ -14123,7 +14458,13 @@ function updateStudentProfile(data) {
   if (!data.registrationId) return { status: 'error', message: 'Registration ID missing' };
 
   // 1. Check archive status & target status
-  const isNewStatusArchived = data.ApplicationStatus && (data.ApplicationStatus.toLowerCase() === 'closed' || data.ApplicationStatus.toLowerCase() === 'opt-out' || data.ApplicationStatus.toLowerCase() === 'optout');
+  const isNewStatusOptOut = data.ApplicationStatus && (data.ApplicationStatus.toLowerCase() === 'opt-out' || data.ApplicationStatus.toLowerCase() === 'optout');
+  if (isNewStatusOptOut) {
+    const moveRes = updateApplicationStatus([data.registrationId], data.ApplicationStatus);
+    return moveRes;
+  }
+
+  const isNewStatusArchived = data.ApplicationStatus && (data.ApplicationStatus.toLowerCase() === 'closed');
   
   const closedSheet = getSheet('Closed and Opt-out');
   let isCurrentlyArchived = false;
@@ -14176,6 +14517,11 @@ function updateStudentProfile(data) {
       } else {
         newStatus = regData[rowIndex - 1][regHeaders.indexOf('ApplicationStatus')] || 'Active';
       }
+    }
+    
+    if (newStatus.toLowerCase() === 'opt-out' || newStatus.toLowerCase() === 'optout') {
+      const moveRes = updateApplicationStatus([data.registrationId], newStatus);
+      return moveRes;
     }
     
     // Call updateApplicationStatus to handle sheet move
@@ -14987,8 +15333,10 @@ function getStudentComprehensiveProfile(regId) {
         other: !!findValue(d, "Other")
       },
       permissions: {
-        attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(details.registrationId).includes('attendance'),
-        diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(details.registrationId).includes('diary')
+        attendance: (d["AttendanceAccess"] !== false && d["AttendanceAccess"] !== 'FALSE' && String(d["AttendanceAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('attendance'),
+        diary: (d["DiaryAccess"] !== false && d["DiaryAccess"] !== 'FALSE' && String(d["DiaryAccess"]).trim().toUpperCase() !== 'FALSE') || getApprovedGracePeriodAreas(regId).includes('diary'),
+        tasks: getApprovedGracePeriodAreas(regId).includes('tasks'),
+        projects: getApprovedGracePeriodAreas(regId).includes('projects')
       },
       rfidTag: d["RFID_TagID"] || '',
       certificateIssued: !!(d["CertificateLink"] || d["CertificateIssuedDate"])
@@ -15105,9 +15453,11 @@ function getStudentComprehensiveProfile(regId) {
       const tD = new Date(); tD.setHours(0, 0, 0, 0);
       const effectiveEnd = eD < tD ? eD : tD;
       let cur = new Date(sD);
-      while (cur <= effectiveEnd) {
+      let safety = 0;
+      while (cur <= effectiveEnd && safety < 10000) {
         if (cur.getDay() !== 0) expectedDiaryDays++; // Exclude Sundays
         cur.setDate(cur.getDate() + 1);
+        safety++;
       }
     }
 
@@ -19311,17 +19661,34 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
     batchId = String(batchId || '').trim();
     regId = String(regId || '').trim();
 
+    // Helper to search properties case-insensitively and space/underscore-insensitively
+    const getVal = (obj, propName) => {
+      if (!obj) return '';
+      const norm = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+      const targetNorm = norm(propName);
+      for (let key in obj) {
+        if (norm(key) === targetNorm) {
+          return obj[key];
+        }
+      }
+      return '';
+    };
+
     // Helper to check validity of a slot_settings entry
     const isSlotValid = (slot) => {
       if (!slot) return false;
-      const timingEnabled = (String(slot.enabled).toLowerCase() === 'true' || slot.enabled === true);
-      const rfidEnabled = (String(slot.rfid_enabled).toLowerCase() === 'true' || slot.rfid_enabled === true);
+      const enabledVal = getVal(slot, 'enabled');
+      const rfidVal = getVal(slot, 'rfid_enabled');
+      const timingEnabled = (enabledVal === true || String(enabledVal).toLowerCase() === 'true' || enabledVal === '' || enabledVal === undefined);
+      const rfidEnabled = (rfidVal === true || String(rfidVal).toLowerCase() === 'true');
       if (!timingEnabled && !rfidEnabled) return false;
 
-      const validityDays = parseInt(slot.validity_days);
-      if (validityDays > 0 && slot.created_at) {
+      const validityDaysVal = getVal(slot, 'validity_days');
+      const validityDays = parseInt(validityDaysVal);
+      const createdAt = getVal(slot, 'created_at');
+      if (validityDays > 0 && createdAt) {
         try {
-          const createdDate = new Date(slot.created_at);
+          const createdDate = new Date(createdAt);
           const expiryDate = new Date(createdDate.getTime() + validityDays * 24 * 60 * 60 * 1000);
           if (new Date() > expiryDate) return false; // Expired
         } catch (e) { }
@@ -19330,24 +19697,33 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
     };
 
     const buildResult = (slot, source) => {
-      const isRfid = (String(slot.rfid_enabled).toLowerCase() === 'true' || slot.rfid_enabled === true);
-      const isTiming = (String(slot.enabled).toLowerCase() === 'true' || slot.enabled === true);
+      const enabledVal = getVal(slot, 'enabled');
+      const rfidVal = getVal(slot, 'rfid_enabled');
+      const isRfid = (rfidVal === true || String(rfidVal).toLowerCase() === 'true');
+      const isTiming = (enabledVal === true || String(enabledVal).toLowerCase() === 'true' || enabledVal === '' || enabledVal === undefined);
 
       let slotMode = 'disabled';
       if (isTiming && isRfid) slotMode = 'both';
       else if (!isTiming && isRfid) slotMode = 'rfid_only';
       else if (isTiming && !isRfid) slotMode = 'manual_only';
 
-      let gLate = parseInt(slot.rfid_grace_late || slot.GraceLate || slot.rfid_grace_late || 0);
-      let gEarly = parseInt(slot.rfid_grace_early || slot.GraceEarly || slot.rfid_grace_early || 0);
+      const graceLateVal = getVal(slot, 'rfid_grace_late') || getVal(slot, 'GraceLate');
+      const graceEarlyVal = getVal(slot, 'rfid_grace_early') || getVal(slot, 'GraceEarly');
+      let gLate = parseInt(graceLateVal || 0);
+      let gEarly = parseInt(graceEarlyVal || 0);
       if (isNaN(gLate) || gLate === 0) gLate = 60;
       if (isNaN(gEarly) || gEarly === 0) gEarly = 60;
 
+      const startTimeVal = getVal(slot, 'start_time');
+      const endTimeVal = getVal(slot, 'end_time');
+      const lateAfterVal = getVal(slot, 'late_after');
+      const earlyBeforeVal = getVal(slot, 'early_exit_before');
+
       return {
-        start: clean(slot.start_time) || defaultStart,
-        end: clean(slot.end_time) || defaultEnd,
-        lateAfter: clean(slot.late_after) || clean(slot.start_time) || defaultStart,
-        earlyBefore: clean(slot.early_exit_before) || clean(slot.end_time) || defaultEnd,
+        start: clean(startTimeVal) || defaultStart,
+        end: clean(endTimeVal) || defaultEnd,
+        lateAfter: clean(lateAfterVal) || clean(startTimeVal) || defaultStart,
+        earlyBefore: clean(earlyBeforeVal) || clean(endTimeVal) || defaultEnd,
         rfidEnabled: isRfid,
         manualEnabled: isTiming,
         graceLate: gLate,
@@ -19355,7 +19731,7 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
         enabled: isTiming || isRfid,
         mode: slotMode,
         source: source,
-        type: String(slot.type || 'DEFAULT').toUpperCase()
+        type: String(getVal(slot, 'type') || 'DEFAULT').toUpperCase()
       };
     };
 
@@ -19391,10 +19767,52 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
             });
             if (batchSlots.length > 0) {
               const slot = batchSlots[0];
+              const resolvedName = resolveBatchNameToName(slot.BatchID);
+              
+              // Lookup in SLOT_SETTINGS for BATCH type settings matching this batch name (normalized)
+              const settingsSheet = getSheet(SHEET_NAMES.SLOT_SETTINGS);
+              let extras = {};
+              if (settingsSheet) {
+                const normName = String(resolvedName || '').replace(/\s+/g, '').toUpperCase();
+                const settings = getSheetDataAsObjects(settingsSheet) || [];
+                const batchSetting = settings.find(s => {
+                  const sType = String(getVal(s, 'type') || '').toUpperCase();
+                  if (sType !== 'BATCH') return false;
+                  const sBatchVal = String(getVal(s, 'batch') || '').trim();
+                  const sBatchResolved = resolveBatchNameToName(sBatchVal);
+                  const normSBatch = String(sBatchResolved || sBatchVal).replace(/\s+/g, '').toUpperCase();
+                  return normSBatch === normName;
+                });
+                if (batchSetting) {
+                  extras = batchSetting;
+                }
+              }
+
+              const isEnabledVal = getVal(extras, 'enabled');
+              const isRfidVal = getVal(extras, 'rfid_enabled');
+              const isTiming = isEnabledVal !== '' ? (isEnabledVal === true || String(isEnabledVal).toLowerCase() === 'true') : true;
+              const isRfid = isRfidVal !== '' ? (isRfidVal === true || String(isRfidVal).toLowerCase() === 'true') : false;
+
+              let gLate = parseInt(getVal(extras, 'rfid_grace_late') || getVal(extras, 'GraceLate') || 0);
+              let gEarly = parseInt(getVal(extras, 'rfid_grace_early') || getVal(extras, 'GraceEarly') || 0);
+              if (isNaN(gLate) || gLate === 0) gLate = 60;
+              if (isNaN(gEarly) || gEarly === 0) gEarly = 60;
+
+              const lateAfterVal = getVal(extras, 'late_after');
+              const earlyBeforeVal = getVal(extras, 'early_exit_before');
+
               return {
-                start: clean(slot.StartTime) || defaultStart, end: clean(slot.EndTime) || defaultEnd,
-                lateAfter: clean(slot.StartTime) || defaultStart, earlyBefore: clean(slot.EndTime) || defaultEnd,
-                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 60, enabled: true, mode: 'both', source: 'batch_slot',
+                start: clean(slot.StartTime) || defaultStart,
+                end: clean(slot.EndTime) || defaultEnd,
+                lateAfter: clean(lateAfterVal) || clean(slot.StartTime) || defaultStart,
+                earlyBefore: clean(earlyBeforeVal) || clean(slot.EndTime) || defaultEnd,
+                rfidEnabled: isRfid,
+                manualEnabled: isTiming,
+                graceLate: gLate,
+                graceEarly: gEarly,
+                enabled: isTiming || isRfid,
+                mode: (isTiming && isRfid) ? 'both' : (isRfid ? 'rfid_only' : 'manual_only'),
+                source: 'batch_slot',
                 type: 'BATCH_LEGACY_SLOT'
               };
             }
@@ -19429,10 +19847,49 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
             });
             if (exceptions.length > 0) {
               const exc = exceptions[0];
+              const resolvedName = resolveBatchNameToName(exc.BatchID);
+              
+              // Lookup in SLOT_SETTINGS for BATCH type settings matching this batch name (normalized)
+              const settingsSheet = getSheet(SHEET_NAMES.SLOT_SETTINGS);
+              let extras = {};
+              if (settingsSheet) {
+                const normName = String(resolvedName || '').replace(/\s+/g, '').toUpperCase();
+                const settings = getSheetDataAsObjects(settingsSheet) || [];
+                const batchSetting = settings.find(s => {
+                  const sType = String(getVal(s, 'type') || '').toUpperCase();
+                  const sBatch = String(getVal(s, 'batch') || '').replace(/\s+/g, '').toUpperCase();
+                  return sType === 'BATCH' && sBatch === normName;
+                });
+                if (batchSetting) {
+                  extras = batchSetting;
+                }
+              }
+
+              const isEnabledVal = getVal(extras, 'enabled');
+              const isRfidVal = getVal(extras, 'rfid_enabled');
+              const isTiming = isEnabledVal !== '' ? (isEnabledVal === true || String(isEnabledVal).toLowerCase() === 'true') : true;
+              const isRfid = isRfidVal !== '' ? (isRfidVal === true || String(isRfidVal).toLowerCase() === 'true') : false;
+
+              let gLate = parseInt(getVal(extras, 'rfid_grace_late') || getVal(extras, 'GraceLate') || 0);
+              let gEarly = parseInt(getVal(extras, 'rfid_grace_early') || getVal(extras, 'GraceEarly') || 0);
+              if (isNaN(gLate) || gLate === 0) gLate = 60;
+              if (isNaN(gEarly) || gEarly === 0) gEarly = 60;
+
+              const lateAfterVal = getVal(extras, 'late_after');
+              const earlyBeforeVal = getVal(extras, 'early_exit_before');
+
               return {
-                start: clean(exc.StartTime || exc.TempStart) || defaultStart, end: clean(exc.EndTime || exc.TempEnd) || defaultEnd,
-                lateAfter: clean(exc.StartTime || exc.TempStart) || defaultStart, earlyBefore: clean(exc.EndTime || exc.TempEnd) || defaultEnd,
-                rfidEnabled: true, manualEnabled: true, graceLate: 60, graceEarly: 60, enabled: true, mode: 'both', source: 'batch_exception',
+                start: clean(exc.StartTime || exc.TempStart) || defaultStart,
+                end: clean(exc.EndTime || exc.TempEnd) || defaultEnd,
+                lateAfter: clean(lateAfterVal) || clean(exc.StartTime || exc.TempStart) || defaultStart,
+                earlyBefore: clean(earlyBeforeVal) || clean(exc.EndTime || exc.TempEnd) || defaultEnd,
+                rfidEnabled: isRfid,
+                manualEnabled: isTiming,
+                graceLate: gLate,
+                graceEarly: gEarly,
+                enabled: isTiming || isRfid,
+                mode: (isTiming && isRfid) ? 'both' : (isRfid ? 'rfid_only' : 'manual_only'),
+                source: 'batch_exception',
                 type: 'BATCH_LEGACY_EXCEPTION'
               };
             }
@@ -19451,15 +19908,15 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
             const normBatchId = String(batchId || '').replace(/\s+/g, '').toUpperCase();
             
             const specS = regId ? validSettings.find(s => {
-              const sType = String(s.type || '').toUpperCase();
-              const sTarget = String(s.applicable_target || '').replace(/\s+/g, '').toUpperCase();
+              const sType = String(getVal(s, 'type')).toUpperCase();
+              const sTarget = String(getVal(s, 'applicable_target')).replace(/\s+/g, '').toUpperCase();
               return sType === 'SPECIAL' && sTarget === normRegId;
             }) : null;
             if (specS) return buildResult(specS, 'special_student');
             
             const specB = batchId ? validSettings.find(s => {
-              const sType = String(s.type || '').toUpperCase();
-              const sTarget = String(s.applicable_target || '').replace(/\s+/g, '').toUpperCase();
+              const sType = String(getVal(s, 'type')).toUpperCase();
+              const sTarget = String(getVal(s, 'applicable_target')).replace(/\s+/g, '').toUpperCase();
               return sType === 'SPECIAL' && sTarget === normBatchId;
             }) : null;
             if (specB) return buildResult(specB, 'special_batch');
@@ -19467,8 +19924,8 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
           else if (pLevel === 'STUDENT' && regId) {
             const normRegId = String(regId || '').replace(/\s+/g, '').toUpperCase();
             const p4 = validSettings.find(s => {
-              const sType = String(s.type || '').toUpperCase();
-              const sTarget = String(s.applicable_target || '').replace(/\s+/g, '').toUpperCase();
+              const sType = String(getVal(s, 'type')).toUpperCase();
+              const sTarget = String(getVal(s, 'applicable_target')).replace(/\s+/g, '').toUpperCase();
               return sType === 'STUDENT' && sTarget === normRegId;
             });
             if (p4) return buildResult(p4, 'student_slot');
@@ -19476,15 +19933,15 @@ function getSlotTiming(batchId, targetDateStr, regId = '') {
           else if (pLevel === 'BATCH' && batchId) {
             const normBid = String(batchId).replace(/\s+/g, '').toUpperCase();
             const p5 = validSettings.find(s => {
-              const sType = String(s.type || s.Type || '').toUpperCase();
-              const sBatch = String(s.batch || s.Batch || '').replace(/\s+/g, '').toUpperCase();
-              const sTarget = String(s.applicable_target || s.ApplicableTarget || '').replace(/\s+/g, '').toUpperCase();
+              const sType = String(getVal(s, 'type') || getVal(s, 'Type')).toUpperCase();
+              const sBatch = String(getVal(s, 'batch') || getVal(s, 'Batch')).replace(/\s+/g, '').toUpperCase();
+              const sTarget = String(getVal(s, 'applicable_target') || getVal(s, 'ApplicableTarget')).replace(/\s+/g, '').toUpperCase();
               return sType === 'BATCH' && (sBatch === normBid || sTarget === normBid);
             });
             if (p5) return buildResult(p5, 'batch_settings');
           }
           else if (pLevel === 'DEFAULT') {
-            const p6 = validSettings.find(s => String(s.type).toUpperCase() === 'DEFAULT');
+            const p6 = validSettings.find(s => String(getVal(s, 'type')).toUpperCase() === 'DEFAULT');
             if (p6) return buildResult(p6, 'default');
           }
         }
@@ -19624,27 +20081,19 @@ function recordWebCheckin(regId) {
       return { status: 'error', message: 'Web check-in is not permitted. Please use RFID.' };
     }
 
-    const nowMins = timeToMinutes(nowStr);
-    const slotStartMins = timeToMinutes(slot.start);
-    const checkinWindow = slot.graceLate > 0 ? parseInt(slot.graceLate) : 60;
+    const slotEndMins = timeToMinutes(slot.end);
+    const checkinWindow = 60; // 1 hour too early window limit
 
     // Checkin limits
-    if (nowMins > (slotStartMins + checkinWindow)) {
+    if (nowMins > slotEndMins) {
       return { status: 'error', message: 'Slot Timing Over' };
     }
     if (nowMins < (slotStartMins - checkinWindow)) {
       return { status: 'error', message: 'Too Early' };
     }
 
-    const lateMins = timeToMinutes(slot.lateAfter);
-
-    let attendanceStatus = 'Present';
-    let lateFlag = false;
-
-    if (nowMins > lateMins) {
-      attendanceStatus = 'Late with Present';
-      lateFlag = true;
-    }
+    const attendanceStatus = determineCheckinStatus(slot, nowMins);
+    const lateFlag = (attendanceStatus === 'Late' || attendanceStatus === 'Late with Present');
 
     const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
     appendObjectToSheet(sheet, {
@@ -20161,98 +20610,38 @@ function markRfidAttendance(rawUid, typeOverride = null, deviceMac = 'UNKNOWN') 
         };
       }
 
-      // Determine check-in path (Direct vs Request)
-      let lateMins = timeToMinutes(slot.lateAfter);
-      const graceLate = slot.rfidEnabled ? parseInt(slot.graceLate || 0) : 0;
-      const directCheckinLimit = lateMins + graceLate;
+      // Determine check-in status and register directly
+      const attStatus = determineCheckinStatus(slot, nowMins);
+      const isLate = (attStatus === 'Late' || attStatus === 'Late with Present');
+      const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
+      appendObjectToSheet(sheet, {
+        AttendanceID: "ATT_" + Date.now(),
+        StudentRegistrationID: regId,
+        StudentName: studentName,
+        Date: today,
+        Status: attStatus,
+        InTime: nowStr,
+        OutTime: "",
+        EntryMode: "RFID",
+        checkin_source: "RFID",
+        late_flag: isLate,
+        Timestamp: new Date().toISOString()
+      });
       
-      if (nowMins > directCheckinLimit) {
-        // LATE CHECKIN PATH: Create request in Admin Panel
-        
-        // 1. Check if a request already exists for today to prevent duplicates
-        const reqSheet = getSheet(SHEET_NAMES.ATTENDANCE_REQUESTS);
-        const requests = getSheetDataAsObjects(reqSheet) || [];
-        const hasPendingRequest = requests.some(r => 
-          String(r.RegistrationID).trim().toLowerCase() === regId.toLowerCase() &&
-          String(r.Date).trim() === today &&
-          String(r.Status).trim().toLowerCase() === 'pending' &&
-          String(r.Type).trim() === 'LATE_CHECKIN'
-        );
-        
-        if (hasPendingRequest) {
-          logDeviceEvent(deviceMac, 'RFID_CheckIn_Fail', `Student: ${studentName} (${regId}) - Duplicate late request`);
-          logDeniedAttendance(regId, studentName, 'Duplicate Late Request', deviceMac);
-          return {
-            status: 'error',
-            name: studentName,
-            regId: regId,
-            college: collegeName,
-            slotTiming: slotTimingStr,
-            batch: batchId,
-            message: 'Req Already Sent',
-            detailStatus: 'Request Pending'
-          };
-        }
-        
-        // 2. Submit the late request
-        const reason = `RFID Late Check-in at ${nowStr} (Slot: ${slotTimingStr} - Past Grace: ${slot.graceLate}m)`;
-        const reqResult = submitAttendanceRequest(regId, 'LATE_CHECKIN', reason, today, nowStr);
-        
-        if (reqResult.status === 'success') {
-          logDeviceEvent(deviceMac, 'RFID_Late_Request', `Student: ${studentName} (${regId}) - Late Request Submitted`);
-          return {
-            status: 'success', // Return success to hardware so it shows confirmation
-            name: studentName,
-            regId: regId,
-            regNo: String(student.RegisterNumber || 'N/A'),
-            college: collegeName,
-            slotTiming: slotTimingStr,
-            batch: batchId,
-            time: nowStr,
-            detailStatus: 'Request Pending',
-            message: 'Req Submitted'
-          };
-        } else {
-          return {
-            status: 'error',
-            name: studentName,
-            message: 'Failed to submit request',
-            detailStatus: 'System Error'
-          };
-        }
-      } else {
-        // DIRECT CHECKIN PATH: Mark Present or Late with Present directly depending on slot.lateAfter
-        const isLate = nowMins > lateMins;
-        const sheet = getSheet(SHEET_NAMES.ATTENDANCE);
-        appendObjectToSheet(sheet, {
-          AttendanceID: "ATT_" + Date.now(),
-          StudentRegistrationID: regId,
-          StudentName: studentName,
-          Date: today,
-          Status: isLate ? 'Late with Present' : 'Present',
-          InTime: nowStr,
-          OutTime: "",
-          EntryMode: "RFID",
-          checkin_source: "RFID",
-          late_flag: isLate,
-          Timestamp: new Date().toISOString()
-        });
-        
-        logDeviceEvent(deviceMac, 'RFID_CheckIn', `Student: ${studentName} (${regId}) - Checked In (${isLate ? 'LATE' : 'IN-TIME'})`);
-        
-        return { 
-          status: 'success', 
-          name: studentName,
-          regId: regId,
-          regNo: String(student.RegisterNumber || student.registerNumber || student["Register Number"] || 'N/A'),
-          college: collegeName,
-          slotTiming: slotTimingStr,
-          batch: batchId,
-          time: nowStr,
-          detailStatus: isLate ? 'Late' : 'Present',
-          message: (student.FirstName || '') + (isLate ? ': LATE' : ': IN-TIME') 
-        };
-      }
+      logDeviceEvent(deviceMac, 'RFID_CheckIn', `Student: ${studentName} (${regId}) - Checked In (${attStatus})`);
+      
+      return { 
+        status: 'success', 
+        name: studentName,
+        regId: regId,
+        regNo: String(student.RegisterNumber || student.registerNumber || student["Register Number"] || 'N/A'),
+        college: collegeName,
+        slotTiming: slotTimingStr,
+        batch: batchId,
+        time: nowStr,
+        detailStatus: attStatus,
+        message: (student.FirstName || '') + (isLate ? ': LATE' : ': IN-TIME') 
+      };
 
     } else if (action === 'checkout') {
       if (!current.record || !current.record.InTime) {
@@ -20526,23 +20915,33 @@ function getSlotTimingsList() {
   };
 
   // Normalize settings
+  const getVal = (obj, propName) => {
+    if (!obj) return '';
+    const norm = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+    const targetNorm = norm(propName);
+    for (let key in obj) {
+      if (norm(key) === targetNorm) {
+        return obj[key];
+      }
+    }
+    return '';
+  };
+
   let unified = data.map(d => {
     // Robust header detection for enabled and rfid_enabled
-    const isEnabled = (d.enabled === true || String(d.enabled).toLowerCase() === 'true' ||
-      d.Enabled === true || String(d.Enabled).toLowerCase() === 'true' ||
-      (d.enabled === undefined && d.Enabled === undefined));
+    const enabledVal = getVal(d, 'enabled');
+    const isEnabled = (enabledVal === true || String(enabledVal).toLowerCase() === 'true' || enabledVal === undefined || enabledVal === '');
 
-    const isRfid = (d.rfid_enabled === true || String(d.rfid_enabled).toLowerCase() === 'true' ||
-      d.RFIDEnabled === true || String(d.RFIDEnabled).toLowerCase() === 'true' ||
-      d.rfidEnabled === true || String(d.rfidEnabled).toLowerCase() === 'true');
+    const rfidVal = getVal(d, 'rfid_enabled');
+    const isRfid = (rfidVal === true || String(rfidVal).toLowerCase() === 'true');
 
-    const tType = String(d.type || 'DEFAULT').toUpperCase();
-    const validityInfo = computeExpiry(d.created_at || d.CreatedAt, d.validity_days || d.validityDays || d.ValidityDays);
+    const tType = String(getVal(d, 'type') || 'DEFAULT').toUpperCase();
+    const validityInfo = computeExpiry(getVal(d, 'created_at'), getVal(d, 'validity_days'));
 
     // Normalize fields for the frontend
-    const batch = String(d.batch || d.Batch || '').trim();
-    const target = String(d.applicable_target || d.applicableTarget || d.ApplicableTarget || '').trim();
-    const type = String(d.type || d.Type || 'DEFAULT').toUpperCase();
+    const batch = String(getVal(d, 'batch')).trim();
+    const target = String(getVal(d, 'applicable_target')).trim();
+    const type = String(getVal(d, 'type') || 'DEFAULT').toUpperCase();
 
     return {
       _source: 'SLOT_SETTINGS',
@@ -20550,20 +20949,20 @@ function getSlotTimingsList() {
       type: type,
       type_label: typeLabels[type] || type + ' Shift',
       batch: batch,
-      start_time: String(d.start_time || d.StartTime || d.start_time || '').replace(/^'/, ''),
-      end_time: String(d.end_time || d.EndTime || d.end_time || '').replace(/^'/, ''),
-      late_after: String(d.late_after || d.LateAfter || d.late_after || '').replace(/^'/, ''),
-      early_exit_before: String(d.early_exit_before || d.EarlyExitBefore || d.early_exit_before || '').replace(/^'/, ''),
+      start_time: String(getVal(d, 'start_time')).replace(/^'/, ''),
+      end_time: String(getVal(d, 'end_time')).replace(/^'/, ''),
+      late_after: String(getVal(d, 'late_after')).replace(/^'/, ''),
+      early_exit_before: String(getVal(d, 'early_exit_before')).replace(/^'/, ''),
       enabled: isEnabled,
       rfid_enabled: isRfid,
       mode: (isEnabled && isRfid) ? 'both' : (isRfid ? 'rfid' : 'manual'),
-      rfid_grace_late: d.rfid_grace_late || d.GraceLate || d.rfid_grace_late || '',
-      rfid_grace_early: d.rfid_grace_early || d.GraceEarly || d.rfid_grace_early || '',
-      applicable_for: d.applicable_for || d.ApplicableFor || '',
+      rfid_grace_late: getVal(d, 'rfid_grace_late') || getVal(d, 'GraceLate') || '',
+      rfid_grace_early: getVal(d, 'rfid_grace_early') || getVal(d, 'GraceEarly') || '',
+      applicable_for: getVal(d, 'applicable_for') || '',
       applicable_target: target,
-      created_at: d.created_at || d.CreatedAt || '',
-      created_at_formatted: formatHumanDate(d.created_at || d.CreatedAt),
-      validity_days: d.validity_days || d.ValidityDays || '',
+      created_at: getVal(d, 'created_at') || '',
+      created_at_formatted: formatHumanDate(getVal(d, 'created_at')),
+      validity_days: getVal(d, 'validity_days') || '',
       expired: validityInfo.expired,
       expiry_formatted: validityInfo.expiry_formatted,
       remaining_days: validityInfo.remaining_days
@@ -20579,8 +20978,13 @@ function getSlotTimingsList() {
     if (!deduped[key]) {
       deduped[key] = s;
     } else {
-      const existingDate = new Date(deduped[key].created_at || 0).getTime();
-      const currentDate  = new Date(s.created_at || 0).getTime();
+      const parseDate = (dStr) => {
+        if (!dStr) return 0;
+        const d = new Date(dStr);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      };
+      const existingDate = parseDate(deduped[key].created_at);
+      const currentDate  = parseDate(s.created_at);
       // Score = count of non-empty meaningful fields
       const score = e => [e.late_after, e.early_exit_before, e.rfid_grace_late, e.rfid_grace_early]
                           .filter(v => v && String(v).trim()).length;
@@ -20595,11 +20999,25 @@ function getSlotTimingsList() {
   // Build a lookup map: batch name (lowercased) → timing extras from SLOT_SETTINGS BATCH entries
   // This allows legacy batch slots to display late_after/early_exit_before/grace values
   // that were saved when admin edited the legacy slot via the settings panel.
+  // Uses resolved name and raw value to prevent ID/Name mismatches.
   const batchTimingMap = {};
   unified.forEach(u => {
     if (u.type === 'BATCH' && u.batch) {
-      const key = String(u.batch).trim().toLowerCase();
-      batchTimingMap[key] = {
+      const batchVal = String(u.batch).trim();
+      const resolvedName = resolveBatchNameToName(batchVal);
+      let resolvedId = batchVal;
+      const batchesSheet = getSheet(SHEET_NAMES.BATCHES);
+      if (batchesSheet) {
+        try {
+          const batches = getSheetDataAsObjects(batchesSheet) || [];
+          const bFound = batches.find(b => String(b.BatchID) === batchVal || String(b.BatchName) === batchVal);
+          if (bFound) {
+            resolvedId = String(bFound.BatchID);
+          }
+        } catch (err) { }
+      }
+      
+      const valObj = {
         late_after: u.late_after || '',
         early_exit_before: u.early_exit_before || '',
         rfid_enabled: u.rfid_enabled || false,
@@ -20607,6 +21025,10 @@ function getSlotTimingsList() {
         rfid_grace_early: u.rfid_grace_early || '',
         mode: u.mode || 'manual'
       };
+      
+      batchTimingMap[batchVal.toLowerCase()] = valObj;
+      if (resolvedName) batchTimingMap[resolvedName.trim().toLowerCase()] = valObj;
+      if (resolvedId) batchTimingMap[resolvedId.trim().toLowerCase()] = valObj;
     }
   });
 
@@ -20617,7 +21039,8 @@ function getSlotTimingsList() {
       const slots = getSheetDataAsObjects(slotsSheet);
       slots.forEach(s => {
         const batchName = resolveBatchNameToName(s.BatchID);
-        const extras = batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
+        const extras = batchTimingMap[String(s.BatchID || '').trim().toLowerCase()] || 
+                       batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
         unified.push({
           _source: 'SLOTS',
           _id: s.SlotID,
@@ -20646,7 +21069,8 @@ function getSlotTimingsList() {
         const batchName = resolveBatchNameToName(s.BatchID);
         const targetDate = String(s.TargetDate || s.Date || '');
         const isExcExpired = targetDate && targetDate < todayStr;
-        const extras = batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
+        const extras = batchTimingMap[String(s.BatchID || '').trim().toLowerCase()] || 
+                       batchTimingMap[String(batchName || '').trim().toLowerCase()] || {};
         unified.push({
           _source: 'SLOT_EXCEPTIONS',
           _id: s.ExceptionID,
@@ -20790,6 +21214,18 @@ function saveNewSlotTiming(data) {
     let targetApplicableFor = String(data.applicable_for || '').trim();
     let targetApplicableTarget = String(data.applicable_target || '').trim();
 
+    const getVal = (obj, propName) => {
+      if (!obj) return '';
+      const normKey = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+      const targetNorm = normKey(propName);
+      for (let key in obj) {
+        if (normKey(key) === targetNorm) {
+          return obj[key];
+        }
+      }
+      return '';
+    };
+
     const norm = (str) => String(str || '').replace(/\s+/g, '').toUpperCase();
     let normType = norm(data.type || 'DEFAULT');
     let normBatch = norm(data.batch || '');
@@ -20799,10 +21235,10 @@ function saveNewSlotTiming(data) {
     // Match Logic for updating vs creating
     for (let i = 0; i < settings.length; i++) {
       let s = settings[i];
-      let sType = norm(s.type || s.Type || 'DEFAULT');
-      let sBatch = norm(s.batch || s.Batch || '');
-      let sTarget = norm(s.applicable_target || s.ApplicableTarget || s.applicableTarget || '');
-      let sFor = norm(s.applicable_for || s.ApplicableFor || '');
+      let sType = norm(getVal(s, 'type') || 'DEFAULT');
+      let sBatch = norm(getVal(s, 'batch'));
+      let sTarget = norm(getVal(s, 'applicable_target'));
+      let sFor = norm(getVal(s, 'applicable_for'));
 
       // Special Case: DEFAULT is unique system-wide
       if (normType === 'DEFAULT' && sType === 'DEFAULT') {
@@ -20811,11 +21247,17 @@ function saveNewSlotTiming(data) {
         break;
       }
 
-      // BATCH type: uniquely identified by type + batch only (applicable_for not used)
-      if (normType === 'BATCH' && sType === 'BATCH' && sBatch === normBatch) {
-        existingIndex = i;
-        existingEntry = s;
-        break;
+      // BATCH type: uniquely identified by type + batch name (resolved)
+      if (normType === 'BATCH' && sType === 'BATCH') {
+        const sBatchResolved = resolveBatchNameToName(getVal(s, 'batch'));
+        const normSBatch = String(sBatchResolved || getVal(s, 'batch')).replace(/\s+/g, '').toUpperCase();
+        const dataBatchResolved = resolveBatchNameToName(data.batch);
+        const normDataBatch = String(dataBatchResolved || data.batch).replace(/\s+/g, '').toUpperCase();
+        if (normSBatch === normDataBatch) {
+          existingIndex = i;
+          existingEntry = s;
+          break;
+        }
       }
 
       // STUDENT type: uniquely identified by type + applicable_target
@@ -20848,14 +21290,14 @@ function saveNewSlotTiming(data) {
     let isIdentical = false;
     if (existingEntry) {
       const normBool = (v) => String(v).toLowerCase();
-      if (cleanTime(existingEntry.start_time) === cleanStartTime &&
-        cleanTime(existingEntry.end_time) === cleanEndTime &&
-        cleanTime(existingEntry.late_after) === cleanLateAfter &&
-        cleanTime(existingEntry.early_exit_before) === cleanEarlyExit &&
-        normBool(existingEntry.enabled) === normBool(data.enabled) &&
-        normBool(existingEntry.rfid_enabled) === normBool(data.rfid_enabled) &&
-        String(existingEntry.rfid_grace_late || '') === String(data.rfid_grace_late || '') &&
-        String(existingEntry.rfid_grace_early || '') === String(data.rfid_grace_early || '')) {
+      if (cleanTime(getVal(existingEntry, 'start_time')) === cleanStartTime &&
+        cleanTime(getVal(existingEntry, 'end_time')) === cleanEndTime &&
+        cleanTime(getVal(existingEntry, 'late_after')) === cleanLateAfter &&
+        cleanTime(getVal(existingEntry, 'early_exit_before')) === cleanEarlyExit &&
+        normBool(getVal(existingEntry, 'enabled')) === normBool(data.enabled) &&
+        normBool(getVal(existingEntry, 'rfid_enabled')) === normBool(data.rfid_enabled) &&
+        String(getVal(existingEntry, 'rfid_grace_late') || '') === String(data.rfid_grace_late || '') &&
+        String(getVal(existingEntry, 'rfid_grace_early') || '') === String(data.rfid_grace_early || '')) {
         isIdentical = true;
       }
 
@@ -20877,21 +21319,18 @@ function saveNewSlotTiming(data) {
         'rfid_grace_early': data.rfid_grace_early || '',
         'applicable_for': targetApplicableFor,
         'applicable_target': targetApplicableTarget,
-        'created_at': existingEntry.created_at || timestamp,
-        'created_from': existingEntry.created_from || 'slot_settings',
-        'history_id': existingEntry.history_id || historyId,
-        'validity_days': data.validity_days || existingEntry.validity_days || ''
+        'created_at': getVal(existingEntry, 'created_at') || timestamp,
+        'created_from': getVal(existingEntry, 'created_from') || 'slot_settings',
+        'history_id': getVal(existingEntry, 'history_id') || historyId,
+        'validity_days': data.validity_days || getVal(existingEntry, 'validity_days') || ''
       };
 
-      const normalizedHeaders = sheetHeaders.map(h => String(h).toLowerCase().replace(/_/g, ''));
+      const normKey = (str) => String(str || '').replace(/[\s_]+/g, '').toLowerCase();
+      const normalizedHeaders = sheetHeaders.map(h => normKey(h));
 
       for (let [colName, val] of Object.entries(updateValues)) {
-        const normCol = colName.toLowerCase().replace(/_/g, '');
+        const normCol = normKey(colName);
         let colIdx = normalizedHeaders.indexOf(normCol);
-
-        // Final fallback for RFIDEnabled vs rfid_enabled if normalization failed
-        if (colIdx === -1 && colName === 'rfid_enabled') colIdx = sheetHeaders.indexOf('RFIDEnabled');
-        if (colIdx === -1 && colName === 'enabled') colIdx = sheetHeaders.indexOf('Enabled');
 
         if (colIdx !== -1) {
           sheet.getRange(rowToUpdate, colIdx + 1).setValue(val);
@@ -23087,6 +23526,371 @@ function checkAndCloseBatchSlots(batchId) {
     logActivity('Slots Closed', `All configurations disabled for batch ${batchId} as all students have certificates.`);
   } catch (e) {
     Logger.log("Error in checkAndCloseBatchSlots: " + e.toString());
+  }
+}
+
+function determineCheckinStatus(slot, checkinMins) {
+  if (!slot || !slot.start) return 'Present';
+  const startMins = timeToMinutes(slot.start);
+  const graceLate = parseInt(slot.graceLate || 0);
+
+  if (checkinMins <= startMins) {
+    return checkinMins < startMins ? 'Early Present' : 'Present';
+  } else if (checkinMins <= startMins + graceLate) {
+    return 'Late with Present';
+  } else {
+    return 'Late';
+  }
+}
+
+function applyApprovedRequest(regId, date, type, targetTime) {
+  try {
+    const attSheet = getSheet(SHEET_NAMES.ATTENDANCE);
+    if (!attSheet) return;
+    const attData = attSheet.getDataRange().getValues();
+    const attHeaders = attData[0];
+    const regCol = attHeaders.indexOf("StudentRegistrationID");
+    const dateCol = attHeaders.indexOf("Date");
+    const statusCol = attHeaders.indexOf("Status");
+    const inCol = attHeaders.indexOf("InTime");
+    const outCol = attHeaders.indexOf("OutTime");
+    const remarksCol = attHeaders.indexOf("Remarks");
+    const modeCol = attHeaders.indexOf("EntryMode");
+    const srcCol = attHeaders.indexOf("checkin_source");
+    const timestampCol = attHeaders.indexOf("Timestamp");
+    const lateFlagCol = attHeaders.indexOf("late_flag");
+
+    const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
+    const nowStr = Utilities.formatDate(new Date(), zone, "hh:mm a");
+    const tTime = targetTime || nowStr;
+
+    // Find if student has a record for this date
+    let foundRowIdx = -1;
+    for (let i = 1; i < attData.length; i++) {
+      const rowRegId = String(attData[i][regCol] || '').trim().toUpperCase();
+      let rowDate = attData[i][dateCol];
+      if (rowDate instanceof Date) rowDate = Utilities.formatDate(rowDate, zone, 'yyyy-MM-dd');
+      else rowDate = String(rowDate || '').trim();
+
+      if (rowRegId === String(regId).toUpperCase() && rowDate === date) {
+        foundRowIdx = i + 1;
+        break;
+      }
+    }
+
+    if (type === 'Check-in Manual' || type === 'LATE_CHECKIN' || type === 'Correction' || type === 'TodayMark') {
+      // Determine check-in status
+      const studentInfo = getStudentFullData(regId);
+      const batchId = (studentInfo.status === 'success') ? studentInfo.studentData.Batch : '';
+      const slot = getSlotTiming(batchId, date, regId);
+      const calculatedStatus = determineCheckinStatus(slot, timeToMinutes(tTime));
+      const lateFlag = (calculatedStatus === 'Late' || calculatedStatus === 'Late with Present');
+
+      if (foundRowIdx !== -1) {
+        if (statusCol !== -1) attSheet.getRange(foundRowIdx, statusCol + 1).setValue(calculatedStatus);
+        if (inCol !== -1) attSheet.getRange(foundRowIdx, inCol + 1).setValue(tTime);
+        if (lateFlagCol !== -1) attSheet.getRange(foundRowIdx, lateFlagCol + 1).setValue(lateFlag);
+        if (remarksCol !== -1) attSheet.getRange(foundRowIdx, remarksCol + 1).setValue('Approved Manual Check-in');
+      } else {
+        const studentName = (studentInfo.status === 'success') ? getStudentFullName_(studentInfo.studentData) : 'Unknown';
+        const workArea = (studentInfo.status === 'success') ? (studentInfo.studentData.InterestedArea || 'General') : 'General';
+        const newRow = attHeaders.map(h => {
+          if (h === 'AttendanceID') return "ATT_" + Date.now();
+          if (h === 'StudentRegistrationID') return regId;
+          if (h === 'StudentName') return studentName;
+          if (h === 'Date') return date;
+          if (h === 'Status') return calculatedStatus;
+          if (h === 'InTime') return tTime;
+          if (h === 'OutTime') return '';
+          if (h === 'EntryMode') return 'Manual';
+          if (h === 'checkin_source') return 'ADMIN_APPROVAL';
+          if (h === 'late_flag') return lateFlag;
+          if (h === 'WorkArea') return workArea;
+          if (h === 'Remarks') return 'Approved Manual Check-in';
+          if (h === 'Timestamp') return new Date();
+          return '';
+        });
+        attSheet.appendRow(newRow);
+      }
+    } else if (type === 'Check-out Early' || type === 'EARLY_EXIT') {
+      if (foundRowIdx !== -1) {
+        if (outCol !== -1) attSheet.getRange(foundRowIdx, outCol + 1).setValue(tTime);
+        if (remarksCol !== -1) {
+          const oldRemarks = attSheet.getRange(foundRowIdx, remarksCol + 1).getValue();
+          attSheet.getRange(foundRowIdx, remarksCol + 1).setValue((oldRemarks ? oldRemarks + '; ' : '') + 'Approved Early Checkout');
+        }
+      } else {
+        // If no check-in record exists (fallback/unusual), create one
+        const studentInfo = getStudentFullData(regId);
+        const studentName = (studentInfo.status === 'success') ? getStudentFullName_(studentInfo.studentData) : 'Unknown';
+        const workArea = (studentInfo.status === 'success') ? (studentInfo.studentData.InterestedArea || 'General') : 'General';
+        const newRow = attHeaders.map(h => {
+          if (h === 'AttendanceID') return "ATT_" + Date.now();
+          if (h === 'StudentRegistrationID') return regId;
+          if (h === 'StudentName') return studentName;
+          if (h === 'Date') return date;
+          if (h === 'Status') return 'Approved Early Exit';
+          if (h === 'InTime') return 'N/A';
+          if (h === 'OutTime') return tTime;
+          if (h === 'EntryMode') return 'Manual';
+          if (h === 'checkin_source') return 'ADMIN_APPROVAL';
+          if (h === 'late_flag') return false;
+          if (h === 'WorkArea') return workArea;
+          if (h === 'Remarks') return 'Approved Early Checkout';
+          if (h === 'Timestamp') return new Date();
+          return '';
+        });
+        attSheet.appendRow(newRow);
+      }
+    }
+  } catch (e) {
+    Logger.log("Error in applyApprovedRequest: " + e.toString());
+  }
+}
+
+/**
+ * Sends warning emails and generates warning PDF documents for a list of students.
+ */
+function sendBatchWarning(regIds, customReason) {
+  try {
+    if (!Array.isArray(regIds) || regIds.length === 0) {
+      return { status: 'error', message: 'No students selected.' };
+    }
+    
+    let successCount = 0;
+    let errors = [];
+    
+    for (let i = 0; i < regIds.length; i++) {
+      const res = sendStudentWarning(regIds[i], customReason);
+      if (res.status === 'success') {
+        successCount++;
+      } else {
+        errors.push(regIds[i] + ": " + res.message);
+      }
+    }
+    
+    if (errors.length > 0) {
+      return {
+        status: 'success',
+        message: `Successfully processed warning for ${successCount} student(s). Failed for: ${errors.join(', ')}`
+      };
+    }
+    
+    return {
+      status: 'success',
+      message: `Successfully generated and sent Warning Notices to ${successCount} student(s).`
+    };
+  } catch (e) {
+    return { status: 'error', message: 'Error in batch warning: ' + e.toString() };
+  }
+}
+
+/**
+ * Generates warning PDF and sends warning email to a single student.
+ */
+function sendStudentWarning(regId, customReason) {
+  try {
+    const studentInfo = getStudentFullData(regId);
+    if (studentInfo.status !== 'success') {
+      return { status: 'error', message: 'Student data not found.' };
+    }
+    
+    const d = studentInfo.studentData;
+    const name = getStudentFullName_(d);
+    const email = d.GmailID;
+    
+    if (!email) {
+      return { status: 'error', message: 'Student email address missing.' };
+    }
+
+    const docName = 'Warning_Notice_' + regId + '_' + Date.now();
+    const doc = DocumentApp.create(docName);
+    const body = doc.getBody();
+    
+    // Page margins
+    body.setMarginTop(36);
+    body.setMarginBottom(36);
+    body.setMarginLeft(36);
+    body.setMarginRight(36);
+
+    // Style helper
+    const titleStyle = {};
+    titleStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    titleStyle[DocumentApp.Attribute.FONT_SIZE] = 16;
+    titleStyle[DocumentApp.Attribute.BOLD] = true;
+    titleStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#d32f2f';
+    titleStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+
+    const headerStyle = {};
+    headerStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    headerStyle[DocumentApp.Attribute.FONT_SIZE] = 10;
+    headerStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#555555';
+    headerStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+
+    const subTitleStyle = {};
+    subTitleStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    subTitleStyle[DocumentApp.Attribute.FONT_SIZE] = 12;
+    subTitleStyle[DocumentApp.Attribute.BOLD] = true;
+    subTitleStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#333333';
+    subTitleStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+
+    const normalStyle = {};
+    normalStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    normalStyle[DocumentApp.Attribute.FONT_SIZE] = 11;
+    normalStyle[DocumentApp.Attribute.BOLD] = false;
+    normalStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#000000';
+    normalStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.LEFT;
+
+    // Company Header
+    const titlePara = body.appendParagraph(COMPANY_NAME);
+    titlePara.setAttributes(titleStyle);
+    
+    const contactPara = body.appendParagraph(`Contact: ${COMPANY_CONTACT} | Web: ${COMPANY_WEBSITE} | Email: gsveeip2026@gmail.com`);
+    contactPara.setAttributes(headerStyle);
+    
+    // Horizontal Line
+    body.appendParagraph("_________________________________________________________________________________")
+        .setAttributes(headerStyle);
+        
+    body.appendParagraph("\n").setAttributes(normalStyle);
+
+    // Document Subtitle
+    const subPara = body.appendParagraph("OFFICIAL WARNING NOTICE");
+    subPara.setAttributes(subTitleStyle);
+    
+    body.appendParagraph("\n").setAttributes(normalStyle);
+
+    // Meta details
+    const zone = Session.getScriptTimeZone() || 'Asia/Kolkata';
+    const todayStr = Utilities.formatDate(new Date(), zone, 'yyyy-MM-dd');
+    
+    body.appendParagraph(`Date: ${todayStr}`).setAttributes(normalStyle);
+    body.appendParagraph(`To: ${name}`).setAttributes(normalStyle);
+    body.appendParagraph(`Registration ID: ${regId}`).setAttributes(normalStyle);
+    body.appendParagraph(`Batch: ${d.Batch || 'N/A'}`).setAttributes(normalStyle);
+    body.appendParagraph(`College: ${d.CollegeName || 'N/A'}`).setAttributes(normalStyle);
+    
+    body.appendParagraph("\n").setAttributes(normalStyle);
+
+    // Body content
+    const p1 = body.appendParagraph("Dear " + name + ",");
+    p1.setAttributes(normalStyle);
+    p1.setBold(true);
+
+    body.appendParagraph("\n").setAttributes(normalStyle);
+
+    const warningBodyText = "We are writing to officially issue a warning notice regarding your internship performance. " +
+      "It has been observed that you are delaying the completion of your project. " +
+      "You have not completed it yet, and there is a significant delay on your side, past the project submission period. " +
+      (customReason ? "\n\nDetails: " + customReason + "\n\n" : " ") +
+      "Please be informed that if you continue to delay project submission, or if you take continuous leave for 3 days or more without prior permission, or engage in any other indisciplinary activities, we will terminate you from this internship program immediately.\n\n" +
+      "In case of termination:\n" +
+      "1. All your worked days will be terminated and invalidated.\n" +
+      "2. You will be removed from the internship program at GSV Electrical Enterprises.\n" +
+      "3. You will not be eligible to receive any internship completion certificate from us.\n" +
+      "4. There will be no further relation or correspondence between you and the company.\n\n" +
+      "We expect you to take immediate corrective actions to complete your project tasks and adhere to the rules and regulations.";
+      
+    const p2 = body.appendParagraph(warningBodyText);
+    p2.setAttributes(normalStyle);
+    
+    body.appendParagraph("\n\n").setAttributes(normalStyle);
+
+    // Signature section
+    const sig1 = body.appendParagraph("Regards,");
+    sig1.setAttributes(normalStyle);
+    sig1.setItalic(true);
+    
+    const sig2 = body.appendParagraph("Proprietor");
+    sig2.setAttributes(normalStyle);
+    sig2.setBold(true);
+    
+    const sig3 = body.appendParagraph("GSV Electrical Enterprises");
+    sig3.setAttributes(normalStyle);
+    
+    body.appendParagraph("\n\n").setAttributes(normalStyle);
+    
+    const footStyle = {};
+    footStyle[DocumentApp.Attribute.FONT_FAMILY] = 'Arial';
+    footStyle[DocumentApp.Attribute.FONT_SIZE] = 9;
+    footStyle[DocumentApp.Attribute.FOREGROUND_COLOR] = '#888888';
+    footStyle[DocumentApp.Attribute.HORIZONTAL_ALIGNMENT] = DocumentApp.HorizontalAlignment.CENTER;
+    
+    const footPara = body.appendParagraph("Computer Generated - Digitally Signed");
+    footPara.setAttributes(footStyle);
+    footPara.setItalic(true);
+
+    // Save and close doc
+    doc.saveAndClose();
+
+    // Convert doc to PDF
+    const tempFile = DriveApp.getFileById(doc.getId());
+    const pdfBlob = tempFile.getAs(MimeType.PDF);
+    
+    const tempFolderId = getSystemFolderId('generated');
+    const tempFolder = DriveApp.getFolderById(tempFolderId);
+    
+    const finalPdf = tempFolder.createFile(pdfBlob).setName('Warning_Notice_' + regId + '.pdf');
+    
+    // Trash the temporary doc
+    tempFile.setTrashed(true);
+
+    // Send Warning Email
+    const emailSubject = `Official Warning Notice: Internship Performance - ${COMPANY_NAME}`;
+    
+    const emailHtmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; padding: 20px; border-radius: 8px;">
+        <div style="text-align: center; border-bottom: 2px solid #d32f2f; padding-bottom: 10px; margin-bottom: 20px;">
+          <h2 style="color: #d32f2f; margin: 0; text-transform: uppercase;">${COMPANY_NAME}</h2>
+          <span style="font-size: 11px; color: #666;">Contact: ${COMPANY_CONTACT} | Web: ${COMPANY_WEBSITE}</span>
+        </div>
+        <p>Dear <strong>${name}</strong>,</p>
+        <p>This is to inform you that an official Warning Notice has been issued regarding your internship status (Registration ID: <strong>${regId}</strong>).</p>
+        <p style="background-color: #ffebee; border-left: 4px solid #d32f2f; padding: 12px; color: #b71c1c; font-weight: bold;">
+          Warning: Project delay and/or unauthorized absence observed. Continuous unpermitted leave (3 days or more) or project delay will result in immediate termination.
+        </p>
+        <p>Please find the official warning document attached to this email. You are instructed to read it carefully and take immediate corrective actions.</p>
+        <p>If you fail to do so, your internship will be terminated, days worked will be invalidated, and you will not be eligible for certification.</p>
+        <div style="margin-top: 30px; border-top: 1px solid #e0e0e0; padding-top: 15px; font-size: 12px; color: #555;">
+          <p>Regards,<br><strong>Proprietor</strong><br>${COMPANY_NAME}</p>
+          <hr style="border: none; border-top: 1px dashed #ccc; margin: 15px 0;">
+          <p style="text-align: center; font-style: italic; color: #888;">Computer Generated - Digitally Signed</p>
+        </div>
+      </div>
+    `;
+
+    MailApp.sendEmail({
+      to: email,
+      subject: emailSubject,
+      htmlBody: emailHtmlBody,
+      attachments: [finalPdf.getBlob()],
+      name: COMPANY_NAME
+    });
+
+    // Save to generated documents sheet
+    const docSheet = getSheet(SHEET_NAMES.GENERATED_DOCUMENTS);
+    if (docSheet) {
+      const headers = docSheet.getRange(1, 1, 1, docSheet.getLastColumn()).getValues()[0].map(h => h.toString().trim());
+      const docId = "WRN-" + Date.now();
+      
+      const newRow = headers.map(h => {
+        if (h === 'DocumentID') return docId;
+        if (h === 'StudentRegistrationID') return regId;
+        if (h === 'DocType') return 'WarningNotice';
+        if (h === 'ReferenceNumber') return docId;
+        if (h === 'DocUrl') return finalPdf.getUrl();
+        if (h === 'PdfFileId') return finalPdf.getId();
+        if (h === 'GeneratedDate') return new Date();
+        if (h === 'SentViaEmail') return 'Yes';
+        return '';
+      });
+      docSheet.appendRow(newRow);
+    }
+
+    return { status: 'success', message: 'Warning notice sent.' };
+  } catch (e) {
+    Logger.log("Error in sendStudentWarning: " + e.toString());
+    return { status: 'error', message: e.toString() };
   }
 }
 
