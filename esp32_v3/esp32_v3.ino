@@ -44,7 +44,7 @@
 #endif
 
 // ==================== CONFIGURATION ====================
-#define FIRMWARE_VERSION "v7.0.6-ELITE"
+#define FIRMWARE_VERSION "v7.0.7-ELITE-HOTFIX"
 #define DEVICE_NAME "vvarma-rfid"
 #define AP_SSID "VARMA RFID SYSTEM"
 #define AP_PASS "GSVRF001"
@@ -150,6 +150,14 @@ volatile SyncStatus currentSyncStatus = SYNC_INITIAL;
 unsigned long lastErrorBeepTime = 0;
 bool initialSyncDone = false;
 bool autoUpdateEnabled = true;
+
+// OTA background task tracking
+volatile int otaProgress = 0;
+volatile bool otaRunning = false;
+String otaStatusStr = "idle";
+String otaErrorMsg = "";
+String otaTargetVerVal = "";
+TaskHandle_t otaTaskHandle = NULL;
 
 // RFID Debounce & Scan Lock
 const unsigned long RFID_DEBOUNCE_MS = 3000; // Ignore same card for 3s
@@ -271,10 +279,13 @@ struct FirmwareDetails {
   String latestVersion;
   String downloadUrl;
   bool updateAvailable;
+  String rawVersionsJson; // JSON array of versions
 };
 
 // ==================== PROTOTYPES ====================
 FirmwareDetails fetchOnlineFirmwareDetails();
+void startOtaUpdateTask(String url);
+void otaTask(void *pvParameters);
 void webLog(String msg);
 void initializeLCD();
 void mDNS_begin();
@@ -2248,7 +2259,7 @@ void beepInventorySuccess() {
 
 
 FirmwareDetails fetchOnlineFirmwareDetails() {
-  FirmwareDetails details = {false, "", "", false};
+  FirmwareDetails details = {false, "", "", false, "[]"};
   
   String url = "";
   if (otaSource == "github") {
@@ -2294,6 +2305,16 @@ FirmwareDetails fetchOnlineFirmwareDetails() {
       if (details.latestVersion != "" && details.latestVersion != String(FIRMWARE_VERSION)) {
         details.updateAvailable = true;
       }
+      
+      // Extract versions array if present
+      if (doc.containsKey("versions")) {
+        String versionsStr;
+        serializeJson(doc["versions"], versionsStr);
+        details.rawVersionsJson = versionsStr;
+      } else {
+        // Fallback: create a single element array using latest version
+        details.rawVersionsJson = "[{\"version\":\"" + details.latestVersion + "\",\"downloadUrl\":\"" + details.downloadUrl + "\"}]";
+      }
     }
   } else {
     http.end();
@@ -2302,54 +2323,133 @@ FirmwareDetails fetchOnlineFirmwareDetails() {
   return details;
 }
 
-bool performOtaUpdate(String downloadUrl) {
-  if (downloadUrl == "") return false;
+void otaTask(void *pvParameters) {
+  otaRunning = true;
+  otaProgress = 0;
+  otaStatusStr = "updating";
+  otaErrorMsg = "";
   
-  lcdLock();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("UPDATING FW...  ");
-  lcd.setCursor(0, 1);
-  lcd.print("Please Wait...  ");
-  lcdUnlock();
+  String* urlPtr = (String*)pvParameters;
+  String downloadUrl = *urlPtr;
+  delete urlPtr; // Free the allocated String
+  
+  Serial.println("OTA Task: Starting update from " + downloadUrl);
+  
+  // Track update attempts to prevent boot loops
+  preferences.begin("gsv-rfid", false);
+  String targetVer = preferences.getString("ota_target_ver", "");
+  int retryCount = preferences.getInt("ota_retry_count", 0);
+  
+  if (otaTargetVerVal != "") {
+    if (otaTargetVerVal == targetVer) {
+      retryCount++;
+    } else {
+      targetVer = otaTargetVerVal;
+      retryCount = 1;
+    }
+    preferences.putString("ota_target_ver", targetVer);
+    preferences.putInt("ota_retry_count", retryCount);
+  }
+  preferences.end();
   
   WiFiClientSecure client;
   client.setInsecure();
   
+  // Set up progress callback
   httpUpdate.onProgress([](int cur, int total) {
     int pct = (total > 0) ? ((cur * 100) / total) : 0;
-    Serial.printf("OTA Progress: %d%%\r\n", pct);
+    otaProgress = pct;
+    otaStatusStr = "updating";
     
-    static int dotsCount = 0;
-    dotsCount = (dotsCount + 1) % 4;
-    String dots = "";
-    for (int i = 0; i < dotsCount; i++) dots += ".";
-    while (dots.length() < 3) dots += " ";
-    
-    lcdLock();
-    lcd.setCursor(0, 0);
-    lcd.print("UPDATING FW...  ");
-    lcd.setCursor(0, 1);
-    char buf[17];
-    snprintf(buf, sizeof(buf), "Pls Wait%s %3d%%", dots.c_str(), pct);
-    lcd.print(buf);
-    lcdUnlock();
+    static unsigned long lastLcdProgressUpdate = 0;
+    if (millis() - lastLcdProgressUpdate > 1000) {
+      lastLcdProgressUpdate = millis();
+      lcdLock();
+      lcd.setCursor(0, 0);
+      lcd.print("UPDATING FW...  ");
+      lcd.setCursor(0, 1);
+      char buf[17];
+      snprintf(buf, sizeof(buf), "Pls Wait   %3d%%", pct);
+      lcd.print(buf);
+      lcdUnlock();
+    }
   });
+  
+  // Turn off reboot on update so we can control the reboot timing and send status to UI
+  httpUpdate.rebootOnUpdate(false);
   
   t_httpUpdate_return ret = httpUpdate.update(client, downloadUrl);
   
-  switch(ret) {
-    case HTTP_UPDATE_FAILED:
-      Serial.printf("HTTP_UPDATE_FAILED Error (%d): %s\r\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
-      return false;
-    case HTTP_UPDATE_NO_UPDATES:
-      Serial.println("HTTP_UPDATE_NO_UPDATES");
-      return false;
-    case HTTP_UPDATE_OK:
-      Serial.println("HTTP_UPDATE_OK");
-      return true;
+  if (ret == HTTP_UPDATE_OK) {
+    Serial.println("OTA Task: HTTP_UPDATE_OK. Rebooting in 3 seconds...");
+    otaProgress = 100;
+    otaStatusStr = "rebooting";
+    
+    lcdLock();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Update Success! ");
+    lcd.setCursor(0, 1);
+    lcd.print("Rebooting...    ");
+    lcdUnlock();
+    
+    beepSuccess();
+    
+    delay(3000); // Give time for web browser to receive "rebooting" status
+    ESP.restart();
+  } else {
+    otaRunning = false;
+    otaStatusStr = "failed";
+    otaErrorMsg = httpUpdate.getLastErrorString();
+    if (otaErrorMsg == "") otaErrorMsg = "Update failed (code " + String(ret) + ")";
+    Serial.printf("OTA Task: Failed. Error (%d): %s\r\n", httpUpdate.getLastError(), otaErrorMsg.c_str());
+    
+    lcdLock();
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Update Failed!  ");
+    lcd.setCursor(0, 1);
+    String err = otaErrorMsg;
+    if (err.length() > 16) err = err.substring(0, 16);
+    lcd.print(err);
+    lcdUnlock();
+    
+    beepDenied();
+    
+    // Clear task handle
+    otaTaskHandle = NULL;
+    vTaskDelete(NULL);
   }
-  return false;
+}
+
+void startOtaUpdateTask(String url) {
+  if (otaRunning) {
+    Serial.println("OTA: Already running.");
+    return;
+  }
+  
+  // Save current version as previous version before updating
+  preferences.begin("gsv-rfid", false);
+  preferences.putString("ota_prev_ver", String(FIRMWARE_VERSION));
+  preferences.end();
+  
+  // Allocate the url string dynamically so it can be passed to the task safely
+  String* urlPtr = new String(url);
+  
+  xTaskCreatePinnedToCore(
+    otaTask,           /* Task function. */
+    "ota_task",        /* name of task. */
+    8192,              /* Stack size of task */
+    (void*)urlPtr,     /* parameter of the task */
+    1,                 /* priority of the task */
+    &otaTaskHandle,    /* Task handle */
+    1                  /* pin task to core 1 */
+  );
+}
+
+bool performOtaUpdate(String downloadUrl) {
+  startOtaUpdateTask(downloadUrl);
+  return true;
 }
 
 void initiateOtaCheckOnBoot() {
@@ -2358,9 +2458,19 @@ void initiateOtaCheckOnBoot() {
     return;
   }
   
+  preferences.begin("gsv-rfid", false);
+  String targetVer = preferences.getString("ota_target_ver", "");
+  int retryCount = preferences.getInt("ota_retry_count", 0);
+  preferences.end();
+  
   Serial.println("OTA: Auto update enabled, checking for update on boot...");
   FirmwareDetails details = fetchOnlineFirmwareDetails();
   if (details.success && details.updateAvailable) {
+    if (details.latestVersion == targetVer && retryCount >= 3) {
+      Serial.println("OTA: Skipping update to " + details.latestVersion + " to prevent bootloop (failed " + String(retryCount) + " times).");
+      return;
+    }
+    
     Serial.println("OTA: Found newer version " + details.latestVersion + ", performing update...");
     lcdLock();
     lcd.clear();
@@ -2372,9 +2482,18 @@ void initiateOtaCheckOnBoot() {
     lcd.print(verSub);
     lcdUnlock();
     
-    performOtaUpdate(details.downloadUrl);
+    otaTargetVerVal = details.latestVersion;
+    startOtaUpdateTask(details.downloadUrl);
   } else {
     Serial.println("OTA: No update available on boot.");
+    // If we booted successfully on the target version, reset the retry counter!
+    if (String(FIRMWARE_VERSION) == targetVer && targetVer != "") {
+      preferences.begin("gsv-rfid", false);
+      preferences.remove("ota_target_ver");
+      preferences.putInt("ota_retry_count", 0);
+      preferences.end();
+      Serial.println("OTA: Successfully booted on target version. Resetting retry count.");
+    }
   }
 }
 
@@ -2848,7 +2967,15 @@ void setupWebServer() {
     }
     FirmwareDetails details = fetchOnlineFirmwareDetails();
     if (details.success) {
-      String json = "{\"success\":true,\"latest\":\"" + details.latestVersion + "\",\"updateAvailable\":" + String(details.updateAvailable ? "true" : "false") + "}";
+      preferences.begin("gsv-rfid", true);
+      String prevVer = preferences.getString("ota_prev_ver", "None");
+      preferences.end();
+      
+      String json = "{\"success\":true,\"local\":\"" + String(FIRMWARE_VERSION) + 
+                    "\",\"previous\":\"" + prevVer + 
+                    "\",\"latest\":\"" + details.latestVersion + 
+                    "\",\"updateAvailable\":" + String(details.updateAvailable ? "true" : "false") + 
+                    ",\"versions\":" + (details.rawVersionsJson != "" ? details.rawVersionsJson : "[]") + "}";
       server.send(200, "application/json", json);
     } else {
       server.send(500, "application/json", "{\"success\":false,\"message\":\"Failed to check version\"}");
@@ -2860,14 +2987,37 @@ void setupWebServer() {
       server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    FirmwareDetails details = fetchOnlineFirmwareDetails();
-    if (details.success && details.updateAvailable) {
-      server.send(200, "application/json", "{\"success\":true,\"message\":\"Starting OTA update\"}");
-      delay(500); // Allow server response to send
-      performOtaUpdate(details.downloadUrl);
+    
+    String customUrl = server.arg("url");
+    String customVer = server.arg("version");
+    
+    if (customUrl != "") {
+      server.send(200, "application/json", "{\"success\":true,\"message\":\"Starting custom OTA update\"}");
+      otaTargetVerVal = customVer;
+      startOtaUpdateTask(customUrl);
     } else {
-      server.send(400, "application/json", "{\"success\":false,\"message\":\"No update available or check failed\"}");
+      FirmwareDetails details = fetchOnlineFirmwareDetails();
+      if (details.success && details.updateAvailable) {
+        server.send(200, "application/json", "{\"success\":true,\"message\":\"Starting OTA update\"}");
+        otaTargetVerVal = details.latestVersion;
+        startOtaUpdateTask(details.downloadUrl);
+      } else {
+        server.send(400, "application/json", "{\"success\":false,\"message\":\"No update available or check failed\"}");
+      }
     }
+  });
+
+  server.on("/ota_status", []() {
+    if (!isAuth()) {
+      server.send(403, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    
+    String json = "{\"running\":" + String(otaRunning ? "true" : "false") + 
+                  ",\"progress\":" + String(otaProgress) + 
+                  ",\"status\":\"" + otaStatusStr + 
+                  "\",\"error\":\"" + otaErrorMsg + "\"}";
+    server.send(200, "application/json", json);
   });
 
   server.on("/save_ota", []() {
@@ -3577,24 +3727,35 @@ box-shadow: 0 10px 40px rgba(0,0,0,0.6); display: none; z-index: 10001; animatio
 </div>
 <div class="v-card mb-4">
 <div class="card-title text-info"><i class="fa-solid fa-cloud-arrow-up"></i> SYSTEM FIRMWARE & OTA UPGRADE</div>
-<div class="row align-items-center">
+<div class="row">
 <div class="col-md-6 mb-3 mb-md-0">
 <div class="d-flex align-items-center mb-2">
 <span class="text-white-50 me-2">Local Version:</span>
 <span class="fw-bold text-success" id="firmware-local-version">v7.0.1-ELITE</span>
 </div>
+<div class="d-flex align-items-center mb-2">
+<span class="text-white-50 me-2">Previous Version:</span>
+<span class="fw-bold text-white-50" id="firmware-previous-version">None</span>
+</div>
 <div class="d-flex align-items-center mb-3">
 <span class="text-white-50 me-2">Latest Online:</span>
 <span class="fw-bold text-warning" id="firmware-online-version">Checking...</span>
 </div>
-<div class="form-check form-switch">
+<div class="mb-3 d-none" id="version-select-container">
+<label class="text-white-50 small mb-2 d-block">Select Version to Deploy</label>
+<select class="form-select bg-dark text-white border-secondary mb-3" id="firmware-version-select" onchange="onVersionSelectChange()">
+</select>
+</div>
+<div class="form-check form-switch mb-3">
 <input class="form-check-input" type="checkbox" id="ota-auto-update" checked onclick="toggleAutoUpdate(this)">
 <label class="form-check-label text-white-50 small" for="ota-auto-update">Enable Automatic Updates (Checks on Boot)</label>
 </div>
 </div>
-<div class="col-md-6 text-md-end">
+<div class="col-md-6 text-md-end d-flex flex-column justify-content-end align-items-md-end">
+<div>
 <button class="btn-v btn-v-outline me-2 mb-2" onclick="checkFirmwareVersion()"><i class="fa-solid fa-arrows-rotate me-2"></i>CHECK FOR UPDATE</button>
 <button class="btn-v btn-v-green mb-2" id="btn-trigger-update" onclick="triggerOTAUpdate()" disabled><i class="fa-solid fa-circle-down me-2"></i>INSTALL UPDATE</button>
+</div>
 </div>
 </div>
 <div id="ota-progress-container" class="mt-3 d-none">
@@ -3799,23 +3960,48 @@ else if (id === 'inventory') setMode('INV');
 else if (id === 'attendance') setMode('IN');
 logSerial(`UI: Switched to ${id.toUpperCase()}`);
 }
+let availableVersions = [];
+
 async function checkFirmwareVersion() {
 logSerial("Checking firmware version...");
 const onlineVerEl = document.getElementById('firmware-online-version');
+const localVerEl = document.getElementById('firmware-local-version');
+const prevVerEl = document.getElementById('firmware-previous-version');
+const selectCont = document.getElementById('version-select-container');
+const selectEl = document.getElementById('firmware-version-select');
+const btn = document.getElementById('btn-trigger-update');
 if (onlineVerEl) onlineVerEl.innerText = "Checking...";
 try {
 const res = await fetchAPI('/check_version');
 if (res && res.success) {
 onlineVerEl.innerText = res.latest;
-const btn = document.getElementById('btn-trigger-update');
+if (localVerEl && res.local) localVerEl.innerText = res.local;
+if (prevVerEl && res.previous) prevVerEl.innerText = res.previous;
+if (res.versions && res.versions.length > 0) {
+availableVersions = res.versions;
+if (selectEl) {
+selectEl.innerHTML = "";
+res.versions.forEach((v, index) => {
+const opt = document.createElement('option');
+opt.value = index;
+let label = v.version;
+if (v.version === res.latest) label += " (Latest)";
+if (v.version === res.local) label += " (Current)";
+opt.innerText = label;
+selectEl.appendChild(opt);
+});
+if (selectCont) selectCont.classList.remove('d-none');
+}
+} else {
+if (selectCont) selectCont.classList.add('d-none');
+}
+onVersionSelectChange();
 if (res.updateAvailable) {
 showToast(`New firmware ${res.latest} available!`, "warning");
-logSerial(`Firmware update available! Current: v7.0.1-ELITE, Latest: ${res.latest}`);
-if (btn) btn.disabled = false;
+logSerial(`Firmware update available! Current: ${res.local || 'v7.0.1-ELITE'}, Latest: ${res.latest}`);
 } else {
 showToast("Firmware is up to date", "green");
 logSerial("Firmware is up to date.");
-if (btn) btn.disabled = true;
 }
 } else {
 onlineVerEl.innerText = "Error checking";
@@ -3824,6 +4010,29 @@ showToast("Failed to check version", "danger");
 } catch (err) {
 onlineVerEl.innerText = "Error";
 showToast("Error checking version", "danger");
+}
+}
+function onVersionSelectChange() {
+const selectEl = document.getElementById('firmware-version-select');
+const btn = document.getElementById('btn-trigger-update');
+const localVerEl = document.getElementById('firmware-local-version');
+if (!selectEl || !btn) return;
+const selectedIdx = selectEl.value;
+if (selectedIdx !== "" && availableVersions[selectedIdx]) {
+const selectedVer = availableVersions[selectedIdx].version;
+const currentVer = localVerEl ? localVerEl.innerText : "";
+btn.disabled = false;
+if (selectedVer === currentVer) {
+btn.innerText = "REINSTALL CURRENT";
+btn.classList.remove('btn-v-green');
+btn.classList.add('btn-v-outline');
+} else {
+btn.innerText = "INSTALL UPDATE";
+btn.classList.remove('btn-v-outline');
+btn.classList.add('btn-v-green');
+}
+} else {
+btn.disabled = true;
 }
 }
 function toggleOtaFields() {
@@ -3896,27 +4105,64 @@ showToast("Failed to save preference", "danger");
 el.checked = !enabled; // revert
 }
 }
+let otaPollInterval = null;
+
 async function triggerOTAUpdate() {
-if (!confirm("Are you sure you want to install the update? The device will restart.")) return;
+const selectEl = document.getElementById('firmware-version-select');
+if (!selectEl || selectEl.value === "") {
+showToast("No version selected", "danger");
+return;
+}
+const selectedIdx = selectEl.value;
+const selectedVer = availableVersions[selectedIdx].version;
+const selectedUrl = availableVersions[selectedIdx].downloadUrl;
+if (!confirm(`Are you sure you want to deploy version ${selectedVer}? The device will reboot.`)) {
+return;
+}
 const pBar = document.getElementById('ota-progress-bar');
 const pCont = document.getElementById('ota-progress-container');
 const sText = document.getElementById('ota-status-text');
 const btn = document.getElementById('btn-trigger-update');
 if (pCont) pCont.classList.remove('d-none');
-if (pBar) pBar.style.width = "20%";
+if (pBar) pBar.style.width = "0%";
 if (sText) sText.innerText = "Initiating upgrade...";
 if (btn) btn.disabled = true;
-logSerial("Starting OTA firmware update...");
+logSerial(`Starting OTA firmware update to ${selectedVer}...`);
 try {
-const res = await fetchAPI('/trigger_update');
+const res = await fetchAPI('/trigger_update', { url: selectedUrl, version: selectedVer });
 if (res && res.success) {
+showToast("OTA Update initiated! Monitoring progress...", "warning");
+if (otaPollInterval) clearInterval(otaPollInterval);
+otaPollInterval = setInterval(async () => {
+try {
+const statusRes = await fetchAPI('/ota_status');
+if (statusRes) {
+const currentProgress = statusRes.progress;
+const currentStatus = statusRes.status;
+if (pBar) pBar.style.width = currentProgress + "%";
+if (currentStatus === "updating") {
+if (sText) sText.innerText = `Downloading and writing: ${currentProgress}%`;
+} else if (currentStatus === "rebooting") {
+clearInterval(otaPollInterval);
 if (pBar) pBar.style.width = "100%";
-if (sText) sText.innerText = "Updating... Device rebooting.";
-showToast("Firmware updating! Rebooting device...", "green");
-logSerial("OTA Update triggered successfully. Device rebooting...");
+if (sText) sText.innerText = "Rebooting device...";
+showToast("Update complete! Rebooting device...", "green");
+showRebootOverlay();
+} else if (currentStatus === "failed") {
+clearInterval(otaPollInterval);
+if (sText) sText.innerText = `Failed: ${statusRes.error}`;
+showToast(`Update failed: ${statusRes.error}`, "danger");
+if (btn) btn.disabled = false;
+} else {
+if (sText) sText.innerText = `Status: ${currentStatus} (${currentProgress}%)`;
+}
+}
+} catch (pollErr) {
+console.warn("OTA status polling warning:", pollErr);
+}
+}, 1000);
 } else {
 if (pCont) pCont.classList.add('d-none');
-if (sText) sText.innerText = "Update failed";
 if (btn) btn.disabled = false;
 showToast(res.message || "Update failed", "danger");
 logSerial("OTA Update failed: " + (res.message || "unknown error"));
@@ -3924,9 +4170,47 @@ logSerial("OTA Update failed: " + (res.message || "unknown error"));
 } catch (err) {
 if (pCont) pCont.classList.add('d-none');
 if (btn) btn.disabled = false;
-showToast("Connection lost during update. Check device state.", "danger");
-logSerial("Connection lost. Device may be updating and rebooting.");
+showToast("Connection lost. Check device state.", "danger");
+logSerial("Connection lost. Device may be updating.");
 }
+}
+
+function showRebootOverlay() {
+let overlay = document.getElementById('reboot-overlay');
+if (!overlay) {
+overlay = document.createElement('div');
+overlay.id = 'reboot-overlay';
+overlay.style.position = 'fixed';
+overlay.style.inset = '0';
+overlay.style.background = 'rgba(0,0,0,0.95)';
+overlay.style.zIndex = '10000';
+overlay.style.display = 'flex';
+overlay.style.flexDirection = 'column';
+overlay.style.alignItems = 'center';
+overlay.style.justifyContent = 'center';
+overlay.style.backdropFilter = 'blur(10px)';
+overlay.innerHTML = `
+<div class="text-center p-4" style="max-width: 400px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+<i class="fa-solid fa-arrows-rotate fa-spin text-warning mb-4" style="font-size: 3rem;"></i>
+<h4 class="text-white mb-2">Device Rebooting</h4>
+<p class="text-white-50 small mb-4">The update was installed successfully. The device is now rebooting. Please wait...</p>
+<div class="fw-bold text-info" id="reboot-countdown" style="font-size: 1.5rem;">Reconnecting in 15s...</div>
+</div>
+`;
+document.body.appendChild(overlay);
+} else {
+overlay.style.display = 'flex';
+}
+let count = 15;
+const countEl = document.getElementById('reboot-countdown');
+const interval = setInterval(() => {
+count--;
+if (countEl) countEl.innerText = `Reconnecting in ${count}s...`;
+if (count <= 0) {
+clearInterval(interval);
+window.location.reload();
+}
+}, 1000);
 }
 async function setMode(m) {
 const res = await fetchAPI('/mode', { m: m });
