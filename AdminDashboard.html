@@ -6419,6 +6419,7 @@
                             <option value="emailTemplates">📧 Email Templates</option>
                             <option value="attendanceSlots">⏰ Slot Timings</option>
                             <option value="docTemplates">📄 Document Templates</option>
+                            <option value="otaFirmware">📡 OTA Firmware Manager</option>
                         </select>
                     </div>
 
@@ -6936,6 +6937,74 @@
                                 onclick="saveGeneralSettings()">
                                 <i class="fas fa-save"></i> Save All Settings
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- OTA Firmware Manager Tab -->
+                    <div id="otaFirmwareTab" class="settings-tab" style="display:none;">
+                        <div class="row">
+                            <!-- Add Firmware Form -->
+                            <div class="col-md-5 mb-4">
+                                <div class="card premium-card border-0 shadow-sm" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05)!important; border-radius: 12px;">
+                                    <div class="card-header bg-transparent border-0 text-white fw-bold py-3">
+                                        <i class="fas fa-plus-circle text-success me-2"></i>Register New Firmware
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="mb-3">
+                                            <label class="form-label text-muted small fw-bold">Firmware Version</label>
+                                            <input type="text" id="newFirmwareVersion" class="stylish-form-control" placeholder="e.g. v7.0.8-ELITE">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label text-muted small fw-bold">Binary Download URL</label>
+                                            <input type="text" id="newFirmwareUrl" class="stylish-form-control" placeholder="https://raw.githubusercontent.com/.../esp32_v3.bin">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label class="form-label text-muted small fw-bold">Release Notes / Description</label>
+                                            <textarea id="newFirmwareDesc" class="stylish-form-control" rows="3" placeholder="Describe the changes or hotfixes in this version"></textarea>
+                                        </div>
+                                        <div class="form-check form-switch mb-4">
+                                            <input class="form-check-input" type="checkbox" id="deployFirmwareImmediately" checked>
+                                            <label class="form-check-label text-muted small" for="deployFirmwareImmediately">Deploy immediately (Make Active)</label>
+                                        </div>
+                                        <button class="action-btn btn-approve w-100" onclick="registerNewFirmware()">
+                                            <i class="fas fa-cloud-upload-alt me-2"></i>Upload & Deploy
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Firmware Releases List -->
+                            <div class="col-md-7 mb-4">
+                                <div class="card premium-card border-0 shadow-sm" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05)!important; border-radius: 12px;">
+                                    <div class="card-header bg-transparent border-0 text-white fw-bold py-3 d-flex justify-content-between align-items-center">
+                                        <span><i class="fas fa-history text-info me-2"></i>Release History</span>
+                                        <button class="btn btn-sm btn-outline-info rounded-pill" onclick="loadOtaFirmwareVersions()">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </button>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <div class="table-responsive">
+                                            <table class="table table-dark table-hover table-striped mb-0 text-white align-middle" style="background: transparent;">
+                                                <thead>
+                                                    <tr style="border-bottom: 2px solid rgba(255,255,255,0.1);">
+                                                        <th class="ps-3">Version</th>
+                                                        <th>Description</th>
+                                                        <th>Status</th>
+                                                        <th class="text-end pe-3">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="otaFirmwareTableBody">
+                                                    <tr>
+                                                        <td colspan="4" class="text-center text-muted py-4">
+                                                            <i class="fas fa-spinner fa-spin me-2"></i>Loading firmware releases...
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -10332,7 +10401,7 @@
                 tab.style.display = 'none';
                 tab.classList.remove('active');
             });
-            // Show the selected tab - tab IDs are: generalTab, emailTemplatesTab, docTemplatesTab
+            // Show the selected tab - tab IDs are: generalTab, emailTemplatesTab, docTemplatesTab, otaFirmwareTab
             const target = document.getElementById(tabId + 'Tab');
             if (target) {
                 target.style.display = 'block';
@@ -10348,8 +10417,11 @@
             if (tabId === 'docTemplates') {
                 loadManualDocTemplates();
             }
-        }
 
+            if (tabId === 'otaFirmware') {
+                loadOtaFirmwareVersions();
+            }
+        }
 
         // --- EMAIL TEMPLATE FUNCTIONS ---
         // Global variable emailTemplates is already declared above
@@ -11032,6 +11104,134 @@
                 }
                 else showAdminFeedback('Failed to save settings: ' + res.message, 'error');
             }).saveAppSettings(settings);
+        }
+
+        // --- OTA FIRMWARE MANAGER FUNCTIONS ---
+        function loadOtaFirmwareVersions() {
+            const tbody = document.getElementById('otaFirmwareTableBody');
+            if (!tbody) return;
+
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-2"></i>Loading firmware releases...</td></tr>`;
+
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    const versions = res.versions || [];
+                    if (versions.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4"><i class="fas fa-info-circle me-2"></i>No firmware versions registered.</td></tr>`;
+                        return;
+                    }
+                    
+                    // Sort versions by Timestamp/Date (newest first)
+                    versions.sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
+
+                    tbody.innerHTML = versions.map(v => {
+                        const isActive = String(v.Status).toUpperCase() === 'ACTIVE';
+                        const badgeClass = isActive ? 'bg-success text-white' : 'bg-secondary text-white-50';
+                        const badgeText = isActive ? 'ACTIVE / DEPLOYED' : 'INACTIVE';
+                        const timestampStr = v.Timestamp ? new Date(v.Timestamp).toLocaleString() : '---';
+
+                        const deployButton = isActive 
+                            ? `<button class="action-btn btn-approve disabled opacity-50" disabled style="font-size:11px; padding:4px 8px;"><i class="fas fa-check-double me-1"></i>Active</button>`
+                            : `<button class="action-btn btn-approve" onclick="deployOtaFirmware('${v.Version}')" style="font-size:11px; padding:4px 8px;"><i class="fas fa-play me-1"></i>Deploy</button>`;
+
+                        const deleteButton = isActive
+                            ? `<button class="action-btn btn-delete-premium disabled opacity-50" disabled style="font-size:11px; padding:4px 8px; margin-left:5px;"><i class="fas fa-trash-alt me-1"></i>Delete</button>`
+                            : `<button class="action-btn btn-delete-premium" onclick="deleteOtaFirmware('${v.Version}')" style="font-size:11px; padding:4px 8px; margin-left:5px;"><i class="fas fa-trash-alt me-1"></i>Delete</button>`;
+
+                        return `
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                                <td class="ps-3"><div class="fw-bold text-white">${v.Version}</div><span class="x-small text-muted d-block">${timestampStr}</span></td>
+                                <td><div class="small text-white-50 text-wrap" style="max-width: 250px;">${v.Description || '---'}</div><code class="x-small text-primary text-truncate d-block" style="max-width: 250px;" title="${v.DownloadURL}">${v.DownloadURL}</code></td>
+                                <td><span class="badge ${badgeClass} rounded-pill font-monospace" style="font-size:9px;">${badgeText}</span></td>
+                                <td class="text-end pe-3">${deployButton}${deleteButton}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-4"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load versions: ${res.message}</td></tr>`;
+                }
+            }).getFirmwareVersions();
+        }
+
+        function registerNewFirmware() {
+            const version = document.getElementById('newFirmwareVersion').value.trim();
+            const downloadUrl = document.getElementById('newFirmwareUrl').value.trim();
+            const description = document.getElementById('newFirmwareDesc').value.trim();
+            const makeActive = document.getElementById('deployFirmwareImmediately').checked;
+
+            if (!version || !downloadUrl) {
+                showAdminFeedback('Version and Download URL are required', 'warning');
+                return;
+            }
+
+            showAdminFeedback('Registering new firmware...', 'info');
+            google.script.run.withSuccessHandler(res => {
+                if (res.status === 'success') {
+                    showAdminFeedback(res.message, 'success');
+                    // Reset form fields
+                    document.getElementById('newFirmwareVersion').value = '';
+                    document.getElementById('newFirmwareUrl').value = '';
+                    document.getElementById('newFirmwareDesc').value = '';
+                    // Reload table
+                    loadOtaFirmwareVersions();
+                } else {
+                    showAdminFeedback('Failed to register: ' + res.message, 'error');
+                }
+            }).addFirmwareVersion(version, downloadUrl, description, makeActive);
+        }
+
+        function deployOtaFirmware(version) {
+            showConfirmationModal(
+                'Confirm Firmware Deployment',
+                `<p>Are you sure you want to deploy firmware version <strong>${version}</strong>?</p>
+                 <p class="text-warning small mb-0"><i class="fas fa-exclamation-triangle me-1"></i>Note: This will instantly push the version to active status. Connected ESP32 RFID devices will automatically download and flash this version on their next reboot check.</p>`,
+                [
+                    { text: 'Cancel', action: () => closeModal('confirmationModal') },
+                    {
+                        text: 'Deploy Firmware',
+                        class: 'btn-approve',
+                        action: () => {
+                            showAdminFeedback(`Deploying firmware ${version}...`, 'info');
+                            google.script.run.withSuccessHandler(res => {
+                                if (res.status === 'success') {
+                                    showAdminFeedback(res.message, 'success');
+                                    loadOtaFirmwareVersions();
+                                } else {
+                                    showAdminFeedback('Deployment failed: ' + res.message, 'error');
+                                }
+                            }).deployFirmwareVersion(version);
+                            closeModal('confirmationModal');
+                        }
+                    }
+                ]
+            );
+        }
+
+        function deleteOtaFirmware(version) {
+            showConfirmationModal(
+                'Delete Firmware Version',
+                `<p>Are you sure you want to delete the firmware version <strong>${version}</strong> from the registry?</p>
+                 <p class="text-danger small mb-0"><i class="fas fa-exclamation-triangle me-1"></i>Warning: This action cannot be undone.</p>`,
+                [
+                    { text: 'Cancel', action: () => closeModal('confirmationModal') },
+                    {
+                        text: 'Delete',
+                        class: 'btn-delete-premium',
+                        action: () => {
+                            showAdminFeedback(`Deleting firmware version ${version}...`, 'info');
+                            google.script.run.withSuccessHandler(res => {
+                                if (res.status === 'success') {
+                                    showAdminFeedback(res.message, 'success');
+                                    loadOtaFirmwareVersions();
+                                } else {
+                                    showAdminFeedback('Delete failed: ' + res.message, 'error');
+                                }
+                            }).deleteFirmwareVersion(version);
+                            closeModal('confirmationModal');
+                        }
+                    }
+                ]
+            );
         }
 
         function handleSwitchChange(el) {

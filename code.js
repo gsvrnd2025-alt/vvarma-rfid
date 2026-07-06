@@ -45,7 +45,8 @@ const SHEET_NAMES = {
   CERTIFICATE_CONTENT: 'CertificateContent',
   RFID_ONLINE_STATUS: 'RFID_Online_Status',
   CONSOLIDATED_INTERNSHIPS: 'Consolidated_Internships',
-  CONSOLIDATED_TEMPLATE: 'Consolidated_Template'
+  CONSOLIDATED_TEMPLATE: 'Consolidated_Template',
+  FIRMWARE_VERSIONS: 'Firmware_Versions'
 };
 
 const TEMPLATE_IDS = {
@@ -91,7 +92,8 @@ const SHEET_SCHEMAS = {
   [SHEET_NAMES.SWITCH_STATUS]: ["SwitchKey", "Status", "LastUpdated"],
   [SHEET_NAMES.CERTIFICATE_CONTENT]: ["BatchName", "Content", "LastUpdated"],
   [SHEET_NAMES.RFID_ONLINE_STATUS]: ["MAC_ID", "DeviceName", "Status", "LastSeen", "LastSync", "IP_Address"],
-  [SHEET_NAMES.CONSOLIDATED_INTERNSHIPS]: ["Timestamp", "RegistrationID", "ApplicationStatus", "FirstName", "MiddleName", "LastName", "Address", "Pincode", "District", "GmailID", "MobileNumber", "CollegeName", "CollegeCode", "CollegeDistrict", "RegisterNumber", "EducationType", "Year", "Semester", "Department", "DateofBirth", "InternshipStartDate", "InternshipEndDate", "DurationDays", "GPA", "InterestedArea", "Remarks", "ApprovalDate", "ApplicationPdfId", "OfferLetterPdfId", "JoiningLetterPdfId", "LastLogin", "LastChatCheck", "ProfilePhotoUrl", "Batch", "CertificateLink", "CertificateIssuedDate", "Status", "BonafideUrl", "DeclarationUrl", "CollegeIdUrl", "OtherUrl", "AttendanceAccess", "DiaryAccess", "RFID_TagID"]
+  [SHEET_NAMES.CONSOLIDATED_INTERNSHIPS]: ["Timestamp", "RegistrationID", "ApplicationStatus", "FirstName", "MiddleName", "LastName", "Address", "Pincode", "District", "GmailID", "MobileNumber", "CollegeName", "CollegeCode", "CollegeDistrict", "RegisterNumber", "EducationType", "Year", "Semester", "Department", "DateofBirth", "InternshipStartDate", "InternshipEndDate", "DurationDays", "GPA", "InterestedArea", "Remarks", "ApprovalDate", "ApplicationPdfId", "OfferLetterPdfId", "JoiningLetterPdfId", "LastLogin", "LastChatCheck", "ProfilePhotoUrl", "Batch", "CertificateLink", "CertificateIssuedDate", "Status", "BonafideUrl", "DeclarationUrl", "CollegeIdUrl", "OtherUrl", "AttendanceAccess", "DiaryAccess", "RFID_TagID"],
+  [SHEET_NAMES.FIRMWARE_VERSIONS]: ["Version", "DownloadURL", "Description", "Status", "Timestamp"]
 };
 
 /**
@@ -389,14 +391,26 @@ function saveSwitchStatus(key, state) {
 
 function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'get_firmware_version') {
-    const settingsResult = getAppSettings();
-    const settings = (settingsResult && settingsResult.status === 'success') ? settingsResult.settings : {};
-    const latestVersion = settings.LATEST_FIRMWARE_VERSION || 'v7.0.1-ELITE';
-    const downloadUrl = settings.FIRMWARE_DOWNLOAD_URL || '';
+    const activeFirmware = getActiveFirmwareDetails();
+    let versions = [];
+    try {
+      const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+      if (sheet) {
+        versions = getSheetDataAsObjects(sheet).map(v => ({
+          version: String(v.Version || '').trim(),
+          downloadUrl: String(v.DownloadURL || '').trim(),
+          description: String(v.Description || '').trim(),
+          status: String(v.Status || '').trim()
+        }));
+      }
+    } catch(err) {
+      Logger.log("Error fetching versions: " + err);
+    }
     return ContentService.createTextOutput(JSON.stringify({
       status: 'success',
-      version: latestVersion,
-      downloadUrl: downloadUrl
+      version: activeFirmware.version,
+      downloadUrl: activeFirmware.downloadUrl,
+      versions: versions
     })).setMimeType(ContentService.MimeType.JSON);
   }
 
@@ -651,7 +665,7 @@ function getHandshakeStatus(mac) {
 function updateDeviceHeartbeat(mac, e) {
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(2000);
+    lock.waitLock(5000); // 5s timeout to prevent database connection failures under lock contention
     const macClean = (mac || '').replace(/[:\s]/g, '').toUpperCase();
     const sheet = getSheet(SHEET_NAMES.RFID_DEVICES);
     if (!sheet) return { status: 'ERROR', message: 'RFID_Devices sheet missing' };
@@ -931,7 +945,7 @@ function quickVerify(mac) {
 function verifyRfidDevice(mac, e) {
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(2000); // Optimized from 10000ms to 2000ms for faster response
+    lock.waitLock(5000); // 5s timeout to prevent database connection failures under lock contention
     if (!mac || mac === 'UNKNOWN') {
       return { status: 'ERROR', message: 'No MAC address provided' };
     }
@@ -24248,6 +24262,218 @@ function sendStudentWarning(regId, customReason) {
   } catch (e) {
     Logger.log("Error in sendStudentWarning: " + e.toString());
     return { status: 'error', message: e.toString() };
+  }
+}
+
+// =================================================================================
+// OTA FIRMWARE MANAGEMENT FUNCTIONS
+// =================================================================================
+
+function getActiveFirmwareDetails() {
+  try {
+    const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+    if (sheet) {
+      const data = sheet.getDataRange().getValues();
+      const headers = data[0];
+      const verIdx = headers.indexOf('Version');
+      const urlIdx = headers.indexOf('DownloadURL');
+      const statusIdx = headers.indexOf('Status');
+      
+      if (verIdx !== -1 && urlIdx !== -1 && statusIdx !== -1) {
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][statusIdx]).toUpperCase() === 'ACTIVE') {
+            return {
+              version: String(data[i][verIdx] || '').trim(),
+              downloadUrl: String(data[i][urlIdx] || '').trim()
+            };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log("Error in getActiveFirmwareDetails: " + e.toString());
+  }
+  
+  // Fallback to standard AppSettings
+  const settingsResult = getAppSettings();
+  const settings = (settingsResult && settingsResult.status === 'success') ? settingsResult.settings : {};
+  return {
+    version: settings.LATEST_FIRMWARE_VERSION || 'v7.0.1-ELITE',
+    downloadUrl: settings.FIRMWARE_DOWNLOAD_URL || ''
+  };
+}
+
+function getFirmwareVersions() {
+  try {
+    const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+    if (!sheet) {
+      return { status: 'error', message: 'Firmware_Versions sheet not found.' };
+    }
+    const data = getSheetDataAsObjects(sheet);
+    return {
+      status: 'success',
+      versions: data
+    };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  }
+}
+
+function addFirmwareVersion(version, downloadUrl, description, makeActive) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+    if (!sheet) {
+      return { status: 'error', message: 'Firmware_Versions sheet not found.' };
+    }
+    
+    version = String(version || '').trim();
+    downloadUrl = String(downloadUrl || '').trim();
+    description = String(description || '').trim();
+    if (!version || !downloadUrl) {
+      return { status: 'error', message: 'Version and Download URL are required.' };
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const verIdx = headers.indexOf('Version');
+    const statusIdx = headers.indexOf('Status');
+    
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][verIdx] || '').trim() === version) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+    
+    const now = new Date();
+    const statusVal = makeActive ? 'ACTIVE' : 'INACTIVE';
+    
+    if (makeActive) {
+      // Set all other versions to INACTIVE
+      for (let i = 1; i < data.length; i++) {
+        sheet.getRange(i + 1, statusIdx + 1).setValue('INACTIVE');
+      }
+    }
+    
+    const newRowObj = {
+      'Version': version,
+      'DownloadURL': downloadUrl,
+      'Description': description,
+      'Status': statusVal,
+      'Timestamp': now
+    };
+    
+    if (rowIndex !== -1) {
+      updateObjectInSheet(sheet, 'Version', version, newRowObj);
+    } else {
+      appendObjectToSheet(sheet, newRowObj);
+    }
+    
+    if (makeActive) {
+      saveAppSettings({
+        'LATEST_FIRMWARE_VERSION': version,
+        'FIRMWARE_DOWNLOAD_URL': downloadUrl
+      });
+    }
+    
+    SpreadsheetApp.flush();
+    logActivity('Firmware Update', 'Admin', 'Registered firmware version ' + version + (makeActive ? ' & deployed' : ''));
+    return { status: 'success', message: 'Firmware version ' + version + ' saved successfully.' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deployFirmwareVersion(version) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+    if (!sheet) {
+      return { status: 'error', message: 'Firmware_Versions sheet not found.' };
+    }
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const verIdx = headers.indexOf('Version');
+    const statusIdx = headers.indexOf('Status');
+    const urlIdx = headers.indexOf('DownloadURL');
+    
+    let targetUrl = '';
+    let found = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      const rowVer = String(data[i][verIdx] || '').trim();
+      if (rowVer === version) {
+        sheet.getRange(i + 1, statusIdx + 1).setValue('ACTIVE');
+        targetUrl = String(data[i][urlIdx] || '').trim();
+        found = true;
+      } else {
+        sheet.getRange(i + 1, statusIdx + 1).setValue('INACTIVE');
+      }
+    }
+    
+    if (!found) {
+      return { status: 'error', message: 'Version not found: ' + version };
+    }
+    
+    saveAppSettings({
+      'LATEST_FIRMWARE_VERSION': version,
+      'FIRMWARE_DOWNLOAD_URL': targetUrl
+    });
+    
+    SpreadsheetApp.flush();
+    logActivity('Firmware Update', 'Admin', 'Deployed firmware version ' + version);
+    return { status: 'success', message: 'Firmware version ' + version + ' deployed successfully.' };
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteFirmwareVersion(version) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    const sheet = getSheet(SHEET_NAMES.FIRMWARE_VERSIONS || 'Firmware_Versions');
+    if (!sheet) {
+      return { status: 'error', message: 'Firmware_Versions sheet not found.' };
+    }
+    
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const verIdx = headers.indexOf('Version');
+    const statusIdx = headers.indexOf('Status');
+    
+    let rowIndex = -1;
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][verIdx] || '').trim() === version) {
+        rowIndex = i + 1;
+        const status = String(data[i][statusIdx] || '').toUpperCase();
+        if (status === 'ACTIVE') {
+          return { status: 'error', message: 'Cannot delete the currently active firmware version.' };
+        }
+        break;
+      }
+    }
+    
+    if (rowIndex !== -1) {
+      sheet.deleteRow(rowIndex);
+      SpreadsheetApp.flush();
+      logActivity('Firmware Update', 'Admin', 'Deleted firmware version ' + version);
+      return { status: 'success', message: 'Firmware version ' + version + ' deleted successfully.' };
+    } else {
+      return { status: 'error', message: 'Version not found: ' + version };
+    }
+  } catch (e) {
+    return { status: 'error', message: e.toString() };
+  } finally {
+    lock.releaseLock();
   }
 }
 
