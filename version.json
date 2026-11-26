@@ -1,4 +1,30 @@
 {
   "version": "v7.0.7-ELITE-HOTFIX",
-  "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin"
+  "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
+  "versions": [
+    {
+      "version": "v7.0.7-ELITE-HOTFIX",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
+      "releaseDate": "2026-11-26",
+      "notes": "Latest Stable Hotfix - Instant Punch & Resilient WiFi"
+    },
+    {
+      "version": "v7.0.6-ELITE",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/79f7e4b/esp32_v3.bin",
+      "releaseDate": "2026-11-20",
+      "notes": "Dual Punch Optimization & Battery Performance"
+    },
+    {
+      "version": "v7.0.5-ELITE",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/4acd1ff/esp32_v3.bin",
+      "releaseDate": "2026-11-15",
+      "notes": "Stable Production Release - AP_STA & mDNS"
+    },
+    {
+      "version": "v7.0.1-ELITE",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/5ae5d05/esp32_v3.bin",
+      "releaseDate": "2026-11-01",
+      "notes": "Base ELITE Architecture"
+    }
+  ]
 }
