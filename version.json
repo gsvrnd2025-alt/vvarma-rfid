@@ -1,7 +1,13 @@
 {
-  "version": "v7.0.8-ELITE-HOTFIX",
+  "version": "v7.0.9-ELITE",
   "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
   "versions": [
+    {
+      "version": "v7.0.9-ELITE",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
+      "releaseDate": "2026-11-26",
+      "notes": "Candidate Photo, LocalStorage Cache Fallback for Logs/Inventory, Auto-focus QR/Barcode Instant Verification"
+    },
     {
       "version": "v7.0.8-ELITE-HOTFIX",
       "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
