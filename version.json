@@ -1,7 +1,13 @@
 {
-  "version": "v7.0.9-ELITE",
+  "version": "v7.1.0-ELITE",
   "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
   "versions": [
+    {
+      "version": "v7.1.0-ELITE",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
+      "releaseDate": "2026-11-26",
+      "notes": "Live firmware version in header, fast direct-first loading with spinners, local cache & Base64 photo fallback on card tap & tabs"
+    },
     {
       "version": "v7.0.9-ELITE",
       "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
