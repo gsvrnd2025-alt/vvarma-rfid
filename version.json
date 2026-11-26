@@ -1,7 +1,13 @@
 {
-  "version": "v7.0.7-ELITE-HOTFIX",
+  "version": "v7.0.8-ELITE-HOTFIX",
   "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
   "versions": [
+    {
+      "version": "v7.0.8-ELITE-HOTFIX",
+      "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
+      "releaseDate": "2026-11-26",
+      "notes": "Hotfix: Local Dashboard JS syntax fix and full responsive controls"
+    },
     {
       "version": "v7.0.7-ELITE-HOTFIX",
       "downloadUrl": "https://raw.githubusercontent.com/gsvrnd2025-alt/vvarma-rfid/master/esp32_v3.bin",
