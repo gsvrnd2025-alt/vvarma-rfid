@@ -749,11 +749,26 @@ void backgroundSyncTask(void *pvParameters) {
 
     // ── PERIODIC INTERNET CHECK (separate from sync) ──
     static unsigned long lastNetCheck = 0;
+    static int netFailCount = 0;
     unsigned long netCheckInterval =
-        (currentSyncStatus == SYNC_OK) ? 30000 : 5000;
+        (currentSyncStatus == SYNC_OK) ? 30000 : 8000;
     if (now - lastNetCheck > netCheckInterval) {
       if (!cardProcessing && !scanLocked) {
-        hasInternet = checkInternet();
+        if (WiFi.status() == WL_CONNECTED) {
+          bool netOk = checkInternet();
+          if (netOk) {
+            hasInternet = true;
+            netFailCount = 0;
+          } else {
+            netFailCount++;
+            if (netFailCount >= 3) {
+              hasInternet = false;
+            }
+          }
+        } else {
+          hasInternet = false;
+          netFailCount = 3;
+        }
         lastNetCheck = now;
       }
     }
@@ -1477,6 +1492,9 @@ void processCardTask(void *parameter) {
   }
 
   // ── P1b: Internet ──
+  if (!hasInternet && WiFi.status() == WL_CONNECTED) {
+    hasInternet = checkInternet();
+  }
   if (!hasInternet) {
     webLog("Process: P1 FAIL - No internet.");
     lastUserName = "NO INTERNET";
@@ -2460,10 +2478,25 @@ void connectWiFi() {
 }
 
 bool checkInternet() {
+  if (WiFi.status() != WL_CONNECTED) return false;
   HTTPClient http;
+  http.setTimeout(5000);
+  
+  // Endpoint 1: Google generate_204
   http.begin("http://clients3.google.com/generate_204");
-  http.setTimeout(3000);
   int code = http.GET();
+  http.end();
+  if (code == 200 || code == 204) return true;
+
+  // Endpoint 2: Cloudflare generate_204
+  http.begin("http://cp.cloudflare.com/generate_204");
+  code = http.GET();
+  http.end();
+  if (code == 200 || code == 204) return true;
+
+  // Endpoint 3: Google gstatic fallback
+  http.begin("http://connectivitycheck.gstatic.com/generate_204");
+  code = http.GET();
   http.end();
   return (code == 200 || code == 204);
 }
